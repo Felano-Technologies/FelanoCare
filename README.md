@@ -20,10 +20,10 @@ PharmaAIx is an AI-driven pharmaceutical health platform designed to transform h
 ## Tech Stack
 
 - AI/ML Models: NLP, predictive analytics, deep learning  
-- Backend: [Specify your backend tech, e.g., Node.js, Django]  
-- Frontend: [Specify your frontend tech, e.g., React, Angular]  
-- Database: [Specify database tech, e.g., MongoDB, PostgreSQL]  
-- Deployment: [Specify, e.g., AWS, Render]
+- Backend: [Firebase js]  
+- Frontend: [React js]  
+- Database: [Firebase Storage]  
+- Deployment: [Render]
 
 ## Getting Started
 
@@ -42,5 +42,6 @@ PharmaAIx is an AI-driven pharmaceutical health platform designed to transform h
    ```bash
    npm start
    ```
+   ````
 4. Visit `http://localhost:3000` to explore.
-````
+
