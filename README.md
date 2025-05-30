@@ -1,6 +1,6 @@
-# PharmaAIx
+# FelanoCare 
 
-PharmaAIx is an AI-driven pharmaceutical health platform designed to transform health service delivery. It integrates artificial intelligence across multiple key areas such as consultation booking, e-pharmacy management, personalized dietetics, psychology & mental health support, and herbal medicine innovation.
+FelanoCare  is an AI-driven pharmaceutical health platform designed to transform health service delivery. It integrates artificial intelligence across multiple key areas such as consultation booking, e-pharmacy management, personalized dietetics, psychology & mental health support, and herbal medicine innovation.
 
 ## Features
 
@@ -29,7 +29,7 @@ PharmaAIx is an AI-driven pharmaceutical health platform designed to transform h
 
 1. Clone the repo:  
    ```bash
-   git clone https://github.com/yourusername/pharmaaix.git
+   git clone https://github.com/yourusername/FelanoCare .git
 
 
 2. Install dependencies:
