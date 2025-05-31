@@ -13,29 +13,46 @@ const seniorTheme = createTheme({
   typography: {
     fontFamily: '"Georgia", serif',
     h4: { fontWeight: 700 },
+    h6: { fontWeight: 500 },
+  },
+  components: {
+    MuiPaper: {
+      styleOverrides: {
+        root: {
+          borderRadius: 10,
+          boxShadow: '0px 3px 12px rgba(0,0,0,0.1)',
+        },
+      },
+    },
   },
 })
 
 export default function SeniorDashboard() {
   return (
     <ThemeProvider theme={seniorTheme}>
-      <Box sx={{ backgroundColor: 'secondary.main', minHeight: '100vh', py: 6 }}>
-        <Container maxWidth="sm">
-          <Typography variant="h4" color="primary" align="center" gutterBottom>
-            Welcome, Valued Senior
+      <Box sx={{ bgcolor: seniorTheme.palette.secondary.main, minHeight: '100vh', py: 6 }}>
+        <Container maxWidth="md">
+          <Typography variant="h4" gutterBottom>
+            👴 Welcome, Senior User!
           </Typography>
-          <Paper elevation={4} sx={{ p: 4, mb: 4 }}>
+
+          {/* BOOKING FORM */}
+          <Paper elevation={2} sx={{ p: 3, mb: 4 }}>
             <Typography variant="h6" gutterBottom>
-              Book Your Consultation
+              📅 Book an Appointment
             </Typography>
             <BookingForm />
           </Paper>
-          <Paper elevation={2} sx={{ p: 3 }}>
+
+          {/* UPCOMING BOOKINGS */}
+          <Paper elevation={2} sx={{ p: 3, mb: 4 }}>
             <Typography variant="h6" gutterBottom>
-              Upcoming Appointments
+              📋 Upcoming Appointments
             </Typography>
             <BookingList />
           </Paper>
+
+          {/* NOTE: AI chat has been removed from this dashboard. */}
         </Container>
       </Box>
     </ThemeProvider>

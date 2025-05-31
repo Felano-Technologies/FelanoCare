@@ -1,8 +1,9 @@
+// src/pages/EPharmacyPage.jsx
 import React from 'react'
 import { Container, Typography, Divider } from '@mui/material'
-import AiAssistant        from '../components/AiAssistant'
 import MedicineSuggestion from '../components/MedicineSuggestion'
 import MedicineList       from '../components/MedicineList'
+import Cart               from '../components/Cart'
 
 export default function EPharmacyPage() {
   return (
@@ -10,12 +11,17 @@ export default function EPharmacyPage() {
       <Typography variant="h4" gutterBottom>
         🏥 E-Pharmacy
       </Typography>
-      <Typography variant="body1" color="textSecondary" gutterBottom>
-        Browse, order, and get AI recommendations for your medications.
+      <Typography
+        variant="body1"
+        color="textSecondary"
+        gutterBottom
+      >
+        Browse, order, and get recommendations for your medications.
       </Typography>
       <Divider sx={{ my: 3 }} />
 
-      <AiAssistant module="epharmacy" />
+      {/* Removed <AiAssistant module="epharmacy" /> */}
+      <Cart />
       <MedicineSuggestion />
       <MedicineList />
     </Container>
