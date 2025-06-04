@@ -2,6 +2,10 @@
 import * as functions from "firebase-functions";
 import OpenAI from "openai";
 
+// For Node 18+, fetch is available globally.
+// If using an earlier Node version, uncomment the next line and install node-fetch:
+// import fetch from "node-fetch";
+
 // Grab your key from functions config
 const key = functions.config().openai.key;
 const openai = new OpenAI({ apiKey: key });
@@ -62,5 +66,40 @@ export const aiAssistant = functions.https.onCall(
     const reply  = choice ? choice.trim() : "";
 
     return { reply };
+  }
+);
+
+/**
+ * Callable function to proxy OpenFDA Drug Label API.
+ * Accepts { term: string } and returns up to 5 results.
+ */
+export const fetchDrugData = functions.https.onCall(
+  async (data: any, context) => {
+    const term = (data.term as string)?.trim();
+    if (!term) {
+      throw new functions.https.HttpsError(
+        "invalid-argument",
+        "A non-empty 'term' field is required."
+      );
+    }
+
+    // Build the OpenFDA URL
+    const query = encodeURIComponent(term);
+    const url   = `https://api.fda.gov/drug/label.json?search=${query}&limit=5`;
+
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        const errorJson = await response.json().catch(() => ({}));
+        const msg = errorJson.error?.message || "OpenFDA API error";
+        throw new Error(msg);
+      }
+      const json = await response.json();
+      // Return only the results array (could be empty)
+      return { results: json.results || [] };
+    } catch (err: any) {
+      console.error("fetchDrugData error:", err);
+      throw new functions.https.HttpsError("internal", err.message);
+    }
   }
 );

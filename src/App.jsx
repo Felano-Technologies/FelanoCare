@@ -1,95 +1,115 @@
 // src/App.jsx
-import React from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
-import { ThemeProvider } from '@mui/material/styles'
-import { useAuth } from './contexts/AuthContext'
-import { useCart } from './contexts/CartContext'
-import { getAge, getAgeCategory } from './utils/age'
+import React from "react"
+import { Routes, Route, Navigate } from "react-router-dom"
+import { ThemeProvider } from "@mui/material/styles"
+import { useAuth } from "./contexts/AuthContext"
+import { useCart } from "./contexts/CartContext"
+import { getAge, getAgeCategory } from "./utils/age"
 
 // Public & Shared
-import Login              from './pages/Login'                   // <-- point at Login.jsx, not './pages/'
-import PatientSignup      from './components/PatientSignup'      // ensure the filename matches exactly
-import ProfessionalSignup from './components/ProfessionalSignup' // ensure the filename matches exactly
-import RequireAuth        from './components/RequireAuth'
-import NavBar             from './components/NavBar'
-import ProfileForm        from './components/ProfileForm'
-import PatientDashboard    from "./pages/PatientDashboard"
+import Login                from "./pages/Login"
+import PatientSignup        from "./components/PatientSignup"
+import ProfessionalSignup   from "./components/ProfessionalSignUp"
+import RequireAuth          from "./components/RequireAuth"
+import ProfileForm          from "./components/ProfileForm"
 
 // Patient‐only pages
-import PatientBookingPage from './pages/PatientBookingPage'
-import EPharmacyPage      from './pages/EPharmacyPage'
-import DieteticsPage      from './pages/DieteticsPage'
-import MentalHealthPage   from './pages/MentalHealthPage'
-import HerbalPage         from './pages/HerbalPage'
-import AIChatPage         from './pages/AIChatPage'
+import PatientDashboard     from "./pages/PatientDashboard"
+import PatientBookingPage   from "./pages/PatientBookingPage"
+import EPharmacyPage        from "./pages/EPharmacyPage"
+import DieteticsPage        from "./pages/DieteticsPage"
+import MentalHealthPage     from "./pages/MentalHealthPage"
+import HerbalPage           from "./pages/HerbalPage"
+import AIChatPage           from "./pages/AIChatPage"
 
 // Professional‐only pages
-import ProfessionalDashboard from './pages/ProfessionalDashboard'
+import ProfessionalDashboard from "./pages/ProfessionalDashboard"
 
-// MUI Icons & Components (for header/cart/logout)
-import IconButton       from '@mui/material/IconButton'
-import Badge            from '@mui/material/Badge'
-import Button           from '@mui/material/Button'
-import ShoppingCartIcon from '@mui/icons-material/ShoppingCart'
-
-// Pre‐defined themes by age group
-import { youthTheme, adultTheme, seniorTheme } from './themes'
+// UI (NavBar, Header) & Theming
+import NavBar          from "./components/NavBar"
+import IconButton      from "@mui/material/IconButton"
+import Badge           from "@mui/material/Badge"
+import Button          from "@mui/material/Button"
+import ShoppingCartIcon from "@mui/icons-material/ShoppingCart"
+import { youthTheme, adultTheme, seniorTheme } from "./themes"
 
 export default function App() {
   const { user, userProfile, loading, logout } = useAuth()
   const { cartItems } = useCart()
 
-  // 1) If auth is still loading, show a loading message
-  if (loading) return <p>Loading…</p>
+  // 1) Still checking auth state?
+  if (loading) {
+    return <p>Loading…</p>
+  }
 
-  // 2) If not logged in, show the Login page
-  if (!user) return <Login />
+  // 2) If not logged in, show the (un-themed) Login or Signup flow
+  //    (Login.jsx contains the tabs “Patient vs Professional”)
+  if (!user) {
+    return <Login />
+  }
 
-  // 3) If a patient is missing name or birthDate, show ProfileForm
+  // 3) If user is signed in but we’re still fetching their Firestore profile:
+  if (user && !userProfile) {
+    return <p>Loading profile…</p>
+  }
+
+  // 4) If userProfile exists but (for patients) is missing required fields:
+  //    e.g. no `name` or `birthDate` → show un-themed ProfileForm
   if (
-    userProfile.role === 'patient' &&
-    (!userProfile?.name || !userProfile?.birthDate)
+    userProfile.role === "patient" &&
+    (!userProfile.name || !userProfile.birthDate)
   ) {
     return <ProfileForm />
   }
 
-  // 4) Determine theme based on patient’s age (professionals use adultTheme by default)
-  let themeToUse = adultTheme
-  if (userProfile.role === 'patient') {
-    const age = getAge(userProfile.birthDate)
-    const category = getAgeCategory(age)
-    const themes = { youth: youthTheme, adult: adultTheme, senior: seniorTheme }
-    themeToUse = themes[category]
+  // 5) At this point, we know user is fully signed in and has a valid profile.
+  //    Determine the theme based on age (only for patients). Professionals default to adultTheme.
+  let chosenTheme = adultTheme
+  if (userProfile.role === "patient") {
+    const age       = getAge(userProfile.birthDate)
+    const category  = getAgeCategory(age) // "youth" | "adult" | "senior"
+    const themesMap = { youth: youthTheme, adult: adultTheme, senior: seniorTheme }
+    chosenTheme     = themesMap[category]
   }
 
+  // 6) Render the rest of the app under that chosen theme:
   return (
-    <ThemeProvider theme={themeToUse}>
-      {/* Top NavBar & Header */}
+    <ThemeProvider theme={chosenTheme}>
+      {/* Only show NavBar & header once the user is truly “in the app” */}
       <NavBar />
 
       <header
         style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '1rem',
-          backgroundColor: themeToUse.palette.background.paper
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "1rem",
+          backgroundColor: chosenTheme.palette.background.paper
         }}
       >
         <h1 style={{ margin: 0 }}>FelanoCare</h1>
+
         <div>
-          {userProfile.role === 'patient' && (
+          {/* If a patient, show cart icon */}
+          {userProfile.role === "patient" && (
             <IconButton
-              onClick={() => { window.location.href = '/epharmacy' }}
+              onClick={() => {
+                window.location.href = "/epharmacy"
+              }}
               size="large"
               aria-label="show cart items"
               color="inherit"
             >
-              <Badge badgeContent={cartItems.reduce((sum, i) => sum + i.quantity, 0)} color="secondary">
+              <Badge
+                badgeContent={cartItems.reduce((sum, i) => sum + i.quantity, 0)}
+                color="secondary"
+              >
                 <ShoppingCartIcon />
               </Badge>
             </IconButton>
           )}
+
+          {/* Log out for everyone */}
           <Button onClick={logout} color="primary" variant="outlined" sx={{ ml: 2 }}>
             Log out
           </Button>
@@ -100,12 +120,12 @@ export default function App() {
         {/* ----------------------------- */}
         {/* PUBLIC / UNPROTECTED ROUTES   */}
         {/* ----------------------------- */}
-        <Route path="/login"     element={<Login />} />
-        <Route path="/signup"    element={<PatientSignup />} />
+        <Route path="/login"      element={<Login />} />
+        <Route path="/signup"     element={<PatientSignup />} />
         <Route path="/pro-signup" element={<ProfessionalSignup />} />
 
         {/* ----------------------------- */}
-        {/* PATIENT‐ONLY ROUTES           */}
+        {/* PATIENT-ONLY ROUTES           */}
         {/* ----------------------------- */}
         <Route
           path="/patient-dashboard"
@@ -165,7 +185,7 @@ export default function App() {
         />
 
         {/* ----------------------------- */}
-        {/* PROFESSIONAL‐ONLY ROUTES       */}
+        {/* PROFESSIONAL-ONLY ROUTES       */}
         {/* ----------------------------- */}
         <Route
           path="/pro-dashboard"
@@ -177,14 +197,16 @@ export default function App() {
         />
 
         {/* ----------------------------- */}
-        {/* ROOT: redirect based on role */}
+        {/* ROOT & CATCH-ALL REDIRECTS     */}
         {/* ----------------------------- */}
         <Route
           path="/"
           element={
-            userProfile.role === 'professional'
-              ? <Navigate to="/pro-dashboard" replace />
-              : <Navigate to="/patient-dashboard" replace />
+            userProfile.role === "professional" ? (
+              <Navigate to="/pro-dashboard" replace />
+            ) : (
+              <Navigate to="/patient-dashboard" replace />
+            )
           }
         />
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -22,6 +22,8 @@ import { useAuth } from "../contexts/AuthContext"
 // Import your two login forms (adjust paths accordingly)
 import Auth from "../components/Auth"
 import ProfessionalLogin from "../components/ProfessionalLogin"
+import ProfessionalSignup from "../components/ProfessionalSignUp"
+
 
 // Import your logo (ensure it’s at src/assets/logo.png)
 const Logo = "/logo.png"  // no import-statement needed—just a URL string
@@ -148,9 +150,6 @@ export default function LoginPage() {
             backgroundColor: theme.palette.background.paper,
           }}
         >
-          <Typography variant="h5" gutterBottom>
-            Patient Login
-          </Typography>
           <Box
             sx={{
               mt: 2,
@@ -179,15 +178,10 @@ export default function LoginPage() {
             <Box sx={{ mt: 4, textAlign: "center" }}>
               <Typography variant="body2" color="textSecondary">
                 Don’t have an account?{" "}
-                <Link
-                  component={RouterLink}
-                  to="/signup"
-                  underline="hover"
-                  color="primary"
-                  sx={{ fontWeight: 500 }}
-                >
-                  Sign up as Patient
-                </Link>
+                  <Link component={RouterLink} to="/signup" underline="hover">
+                    Sign up as Patient
+                  </Link>
+
               </Typography>
             </Box>
           </Box>
@@ -203,9 +197,6 @@ export default function LoginPage() {
             backgroundColor: theme.palette.background.paper,
           }}
         >
-          <Typography variant="h5" gutterBottom>
-            Professional Login
-          </Typography>
           <Box
             sx={{
               mt: 2,
@@ -234,15 +225,10 @@ export default function LoginPage() {
             <Box sx={{ mt: 4, textAlign: "center" }}>
               <Typography variant="body2" color="textSecondary">
                 Don’t have a Professional account?{" "}
-                <Link
-                  component={RouterLink}
-                  to="/pro-signup"
-                  underline="hover"
-                  color="primary"
-                  sx={{ fontWeight: 500 }}
-                >
+                <Link component={RouterLink} to="/pro-signup" underline="hover">
                   Sign up as Professional
                 </Link>
+
               </Typography>
             </Box>
           </Box>

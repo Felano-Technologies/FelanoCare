@@ -105,17 +105,6 @@ export default function Auth() {
           )}
 
           <Grid container justifyContent="flex-end">
-            <Grid item>
-              <Button
-                size="small"
-                onClick={() => setIsNew(prev => !prev)}
-              >
-                {isNew
-                  ? 'Already have an account? Log in'
-                  : 'New here? Create account'
-                }
-              </Button>
-            </Grid>
           </Grid>
         </Stack>
       </Paper>

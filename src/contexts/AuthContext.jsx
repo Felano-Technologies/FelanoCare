@@ -27,38 +27,35 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   // Listen for auth state changes & load Firestore profile
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        setUser(firebaseUser)
+useEffect(() => {
+  const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+    if (firebaseUser) {
+      setUser(firebaseUser)
 
-        // Fetch the Firestore profile for this UID
-        const userRef = doc(db, 'users', firebaseUser.uid)
-        const snap    = await getDoc(userRef)
+      const userRef = doc(db, 'users', firebaseUser.uid)
+      const snap    = await getDoc(userRef)
 
-        if (!snap.exists()) {
-          // If no profile exists, create a minimal one (default to patient role)
-          // You can also prompt your UI to ask for more details if you prefer
-          const fallbackProfile = {
-            email:   firebaseUser.email || '',
-            role:    'patient',                // default new users to "patient"
-            name:    firebaseUser.displayName || '',
-            created: new Date().toISOString()
-          }
-          await setDoc(userRef, fallbackProfile)
-          setUserProfile(fallbackProfile)
-        } else {
-          setUserProfile(snap.data())
+      if (!snap.exists()) {
+        const fallback = {
+          email: firebaseUser.email || '',
+          role: 'patient',
+          name: firebaseUser.displayName || '',
+          created: new Date().toISOString()
         }
+        await setDoc(userRef, fallback)
+        setUserProfile(fallback)
       } else {
-        setUser(null)
-        setUserProfile(null)
+        setUserProfile(snap.data())
       }
-      setLoading(false)
-    })
+    } else {
+      setUser(null)
+      setUserProfile(null)
+    }
+    setLoading(false)
+  })
 
-    return unsubscribe
-  }, [])
+  return unsubscribe
+}, [])
 
   // -------------------------------
   // ROLE‐BASED SIGNUP FUNCTIONS
@@ -160,6 +157,8 @@ export function AuthProvider({ children }) {
 
     return firebaseUser
   }
+
+  
 
   /**
    * Log out the current user.
