@@ -21,7 +21,7 @@ import DieteticsPage        from "./pages/DieteticsPage"
 import MentalHealthPage     from "./pages/MentalHealthPage"
 import HerbalPage           from "./pages/HerbalPage"
 import AIChatPage           from "./pages/AIChatPage"
-
+import CartPage            from "./pages/CartPage"
 // Professional‐only pages
 import ProfessionalDashboard from "./pages/ProfessionalDashboard"
 
@@ -32,10 +32,12 @@ import Badge           from "@mui/material/Badge"
 import Button          from "@mui/material/Button"
 import ShoppingCartIcon from "@mui/icons-material/ShoppingCart"
 import { youthTheme, adultTheme, seniorTheme } from "./themes"
+import { useNavigate } from 'react-router-dom';
 
 export default function App() {
   const { user, userProfile, loading, logout } = useAuth()
   const { cartItems } = useCart()
+  const navigate = useNavigate()
 
   // 1) Still checking auth state?
   if (loading) {
@@ -93,9 +95,7 @@ export default function App() {
           {/* If a patient, show cart icon */}
           {userProfile.role === "patient" && (
             <IconButton
-              onClick={() => {
-                window.location.href = "/epharmacy"
-              }}
+              onClick={() => navigate("/cart")}    // ← changed to navigate("/cart")
               size="large"
               aria-label="show cart items"
               color="inherit"
@@ -115,7 +115,6 @@ export default function App() {
           </Button>
         </div>
       </header>
-
       <Routes>
         {/* ----------------------------- */}
         {/* PUBLIC / UNPROTECTED ROUTES   */}
@@ -173,6 +172,15 @@ export default function App() {
             <RequireAuth role="patient">
               <HerbalPage />
             </RequireAuth>
+          }
+          
+        />
+        <Route
+          path="/cart"
+          element={
+          <RequireAuth role="patient">
+            <CartPage />
+          </RequireAuth>
           }
         />
         <Route

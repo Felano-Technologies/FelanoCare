@@ -126,7 +126,9 @@ export default function DrugSearch() {
         price:        0.0,
         metadata:     { rxcui: drug.rxcui }
       })
+
       alert(`Added ${drug.genericName} to products.`)
+      addToCart(drug.rxcui || drug.genericName.replace(/\s+/g, "_").toLowerCase(), 0.0, "prescription")
 
       // Update local existingIds and remove from displayed results
       setExistingIds(prev => {
