@@ -86,32 +86,7 @@ export default function App() {
   return (
     <ThemeProvider theme={chosenTheme}>
       <NavBar />
-      <header
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "1rem",
-          backgroundColor: chosenTheme.palette.background.paper,
-        }}
-      >
-        <Typography variant="h5" component="h1" sx={{ m: 0 }}>
-          FelanoCare
-        </Typography>
 
-        <div>
-          {userProfile.role === "patient" && (
-            <IconButton onClick={() => navigate("/cart")} size="large" aria-label="show cart items" color="inherit">
-              <Badge badgeContent={totalItems} color="secondary">
-                <ShoppingCartIcon />
-              </Badge>
-            </IconButton>
-          )}
-          <Button onClick={logout} color="primary" variant="outlined" sx={{ ml: 2 }}>
-            Log out
-          </Button>
-        </div>
-      </header>
 
       <Routes>
         {/* PATIENT ROUTES */}
