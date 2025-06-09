@@ -1,14 +1,17 @@
-// src/components/PatientSignup.jsx
 import React, { useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, Link } from "react-router-dom"
 import {
   Box,
   TextField,
   Button,
   Typography,
   Paper,
-  CircularProgress
+  CircularProgress,
+  IconButton,
+  InputAdornment
 } from "@mui/material"
+import Visibility from "@mui/icons-material/Visibility"
+import VisibilityOff from "@mui/icons-material/VisibilityOff"
 import { useAuth } from "../contexts/AuthContext"
 
 export default function PatientSignup() {
@@ -18,16 +21,30 @@ export default function PatientSignup() {
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
   const [birthDate, setBirthDate] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError("")
 
-    if (!name || !email || !password || !birthDate) {
+    // Basic client-side validation
+    if (!name || !email || !password || !confirmPassword || !birthDate) {
       setError("Please fill in all required fields.")
+      return
+    }
+    if (password !== confirmPassword) {
+      setError("Passwords do not match.")
+      return
+    }
+    // Optional: Simple email regex validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email.trim())) {
+      setError("Please enter a valid email address.")
       return
     }
 
@@ -38,7 +55,6 @@ export default function PatientSignup() {
     } catch (err) {
       console.error("SignupPatient error:", err)
 
-      // If the email is already registered, prompt user to login instead
       if (err.code === "auth/email-already-in-use") {
         setError("This email is already registered. Please log in instead.")
       } else {
@@ -84,7 +100,7 @@ export default function PatientSignup() {
           }}
         >
           {error && (
-            <Typography color="error" variant="body2">
+            <Typography color="error" variant="body2" role="alert">
               {error}
             </Typography>
           )}
@@ -94,6 +110,8 @@ export default function PatientSignup() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
+            autoComplete="name"
+            autoFocus
           />
 
           <TextField
@@ -102,14 +120,51 @@ export default function PatientSignup() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
+            autoComplete="email"
           />
 
           <TextField
             label="Password"
-            type="password"
+            type={showPassword ? "text" : "password"}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
+            autoComplete="new-password"
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    onClick={() => setShowPassword((show) => !show)}
+                    edge="end"
+                  >
+                    {showPassword ? <VisibilityOff /> : <Visibility />}
+                  </IconButton>
+                </InputAdornment>
+              )
+            }}
+          />
+
+          <TextField
+            label="Confirm Password"
+            type={showConfirmPassword ? "text" : "password"}
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            required
+            autoComplete="new-password"
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton
+                    aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                    onClick={() => setShowConfirmPassword((show) => !show)}
+                    edge="end"
+                  >
+                    {showConfirmPassword ? <VisibilityOff /> : <Visibility />}
+                  </IconButton>
+                </InputAdornment>
+              )
+            }}
           />
 
           <TextField
@@ -118,6 +173,9 @@ export default function PatientSignup() {
             value={birthDate}
             onChange={(e) => setBirthDate(e.target.value)}
             InputLabelProps={{ shrink: true }}
+            inputProps={{
+              max: new Date().toISOString().split("T")[0] // Max today
+            }}
             required
           />
 
@@ -130,6 +188,13 @@ export default function PatientSignup() {
           >
             {loading ? <CircularProgress size={24} /> : "Sign Up"}
           </Button>
+
+          <Typography variant="body2" align="center" sx={{ mt: 1 }}>
+            Already have an account?{" "}
+            <Link to="/" style={{ textDecoration: "none", color: "#1976d2" }}>
+              Log In
+            </Link>
+          </Typography>
         </Box>
       </Paper>
     </Box>

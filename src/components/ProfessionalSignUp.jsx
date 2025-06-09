@@ -1,6 +1,5 @@
-// src/components/ProfessionalSignup.jsx
 import React, { useState } from "react"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, Link } from "react-router-dom"
 import {
   Box,
   TextField,
@@ -8,34 +7,49 @@ import {
   Typography,
   Paper,
   Avatar,
-  CircularProgress
+  CircularProgress,
+  IconButton,
+  InputAdornment
 } from "@mui/material"
 import WorkIcon from "@mui/icons-material/Work"
+import Visibility from "@mui/icons-material/Visibility"
+import VisibilityOff from "@mui/icons-material/VisibilityOff"
 import { useAuth } from "../contexts/AuthContext"
 
 export default function ProfessionalSignup() {
   const navigate = useNavigate()
   const { signupProfessional } = useAuth()
 
-  // Form state
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError("")
 
-    if (!name || !email || !password) {
+    if (!name || !email || !password || !confirmPassword) {
       setError("Please fill in all required fields.")
+      return
+    }
+    if (password !== confirmPassword) {
+      setError("Passwords do not match.")
+      return
+    }
+    // Simple email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email.trim())) {
+      setError("Please enter a valid email address.")
       return
     }
 
     setLoading(true)
     try {
-      // Call the professional‐specific signup function:
       await signupProfessional(name.trim(), email.trim(), password)
       navigate("/pro-dashboard")
     } catch (err) {
@@ -99,7 +113,7 @@ export default function ProfessionalSignup() {
           }}
         >
           {error && (
-            <Typography color="error" variant="body2">
+            <Typography color="error" variant="body2" role="alert">
               {error}
             </Typography>
           )}
@@ -109,6 +123,8 @@ export default function ProfessionalSignup() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
+            autoComplete="name"
+            autoFocus
           />
 
           <TextField
@@ -117,14 +133,51 @@ export default function ProfessionalSignup() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
+            autoComplete="email"
           />
 
           <TextField
             label="Password"
-            type="password"
+            type={showPassword ? "text" : "password"}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
+            autoComplete="new-password"
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    onClick={() => setShowPassword((show) => !show)}
+                    edge="end"
+                  >
+                    {showPassword ? <VisibilityOff /> : <Visibility />}
+                  </IconButton>
+                </InputAdornment>
+              )
+            }}
+          />
+
+          <TextField
+            label="Confirm Password"
+            type={showConfirmPassword ? "text" : "password"}
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            required
+            autoComplete="new-password"
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton
+                    aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                    onClick={() => setShowConfirmPassword((show) => !show)}
+                    edge="end"
+                  >
+                    {showConfirmPassword ? <VisibilityOff /> : <Visibility />}
+                  </IconButton>
+                </InputAdornment>
+              )
+            }}
           />
 
           <Button
@@ -136,6 +189,13 @@ export default function ProfessionalSignup() {
           >
             {loading ? <CircularProgress size={24} /> : "Sign Up"}
           </Button>
+
+          <Typography variant="body2" align="center" sx={{ mt: 1 }}>
+            Already have an account?{" "}
+            <Link to="/" style={{ textDecoration: "none", color: "#1976d2" }}>
+              Log In
+            </Link>
+          </Typography>
         </Box>
       </Paper>
     </Box>
