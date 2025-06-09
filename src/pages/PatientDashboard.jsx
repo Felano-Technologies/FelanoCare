@@ -1,196 +1,486 @@
-will this run?
-import React, { useEffect, useState } from "react";
+// src/pages/PatientDashboard.jsx
+import React, { useEffect, useState } from "react"
+import { useAuth } from "../contexts/AuthContext"
+import { getAge, getAgeCategory } from "../utils/age"
+import { useNavigate } from "react-router-dom"
 import {
   Container,
   Typography,
   Grid,
   Card,
   CardContent,
-  Avatar,
+  CardActions,
+  Button,
   Box,
+  CircularProgress,
+  Divider,
+  Paper,
+  Collapse,
+  IconButton,
   List,
   ListItem,
-  ListItemText,
-  Divider,
-  useMediaQuery,
-  useTheme,
-} from "@mui/material";
+  ListItemText
+} from "@mui/material"
 import {
-  Medication,
-  Event,
-  TipsAndUpdates,
-  Healing,
-  Favorite,
-} from "@mui/icons-material";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
-import { db } from "../firebase";
-import { useAuth } from "../contexts/AuthContext";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+  Event as EventIcon,
+  LocalPharmacy as LocalPharmacyIcon,
+  Restaurant as RestaurantIcon,
+  Psychology as PsychologyIcon,
+  Spa as SpaIcon,
+  Chat as ChatIcon,
+  Cancel as CancelIcon,
+  Medication as MedicationIcon,
+  FitnessCenter as FitnessCenterIcon,
+  SelfImprovement as SelfImprovementIcon,
+  ExpandMore as ExpandMoreIcon
+} from "@mui/icons-material"
+import { format, parseISO } from "date-fns"
+import { db } from "../firebase"
+import {
+  collectionGroup,
+  query,
+  where,
+  orderBy,
+  limit,
+  onSnapshot
+} from "firebase/firestore"
+import { motion } from "framer-motion"
+import Footer from "../components/Footer"
 
-const PatientDashboard = () => {
-  const { currentUser } = useAuth();
-  const [appointments, setAppointments] = useState([]);
-  const [medications, setMedications] = useState([]);
-  const [tips, setTips] = useState([]);
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+// Configuration per age category
+const CATEGORY_CONFIG = {
+  youth: {
+    bannerGradient: "linear-gradient(135deg, #6A11CB 20%, #2575FC 80%)",
+    accentColor: "#2575FC",
+    textColor: "#FFFFFF",
+    tip: "🏃‍♂️ Stay active, get enough sleep, and balance school with fun!",
+    tipIcon: <FitnessCenterIcon fontSize="large" />,
+  },
+  adult: {
+    bannerGradient: "linear-gradient(135deg, #2193b0 20%, #6dd5ed 80%)",
+    accentColor: "#2193b0",
+    textColor: "#FFFFFF",
+    tip: "🧘‍♀️ Remember to take breaks, manage stress, and stay hydrated.",
+    tipIcon: <SelfImprovementIcon fontSize="large" />,
+  },
+  senior: {
+    bannerGradient: "linear-gradient(135deg, #f7971e 20%, #ffd200 80%)",
+    accentColor: "#f7971e",
+    textColor: "#FFFFFF",
+    tip: "💊 Keep track of your medications and enjoy gentle daily walks.",
+    tipIcon: <MedicationIcon fontSize="large" />,
+  }
+}
+
+export default function PatientDashboard() {
+  const { user, userProfile } = useAuth()
+  const navigate = useNavigate()
+
+  // 1) Calculate age and category
+  const age = getAge(userProfile.birthDate)
+  const category = getAgeCategory(age) // "youth" | "adult" | "senior"
+  const {
+    bannerGradient,
+    accentColor,
+    textColor,
+    tip,
+    tipIcon
+  } = CATEGORY_CONFIG[category] || CATEGORY_CONFIG.adult
+
+  // 2) Next Upcoming Appointment (real-time listener)
+  const [nextAppointment, setNextAppointment] = useState(null)
+  const [loadingAppointment, setLoadingAppointment] = useState(true)
+  const [appointmentError, setAppointmentError] = useState("")
 
   useEffect(() => {
-    if (!currentUser?.uid) return;
+    if (!user) return
 
-    const apptQuery = query(
-      collection(db, "appointments"),
-      where("patientId", "==", currentUser.uid)
-    );
-    const unsubscribeAppt = onSnapshot(apptQuery, (snapshot) => {
-      setAppointments(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-    });
+    setLoadingAppointment(true)
+    const todayStr = format(new Date(), "yyyy-MM-dd")
 
-    const medQuery = query(
-      collection(db, "medications"),
-      where("userId", "==", currentUser.uid)
-    );
-    const unsubscribeMed = onSnapshot(medQuery, (snapshot) => {
-      setMedications(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-    });
+    // Query for the soonest non-canceled slot where patientId == user.uid
+    const nextApptQuery = query(
+      collectionGroup(db, "availability"),
+      where("patientId", "==", user.uid),
+      where("canceled", "==", false),
+      where("date", ">=", todayStr),
+      orderBy("date", "asc"),
+      orderBy("startTime", "asc"),
+      limit(1)
+    )
 
-    const tipsQuery = collection(db, "doctorTips");
-    const unsubscribeTips = onSnapshot(tipsQuery, (snapshot) => {
-      setTips(snapshot.docs.map((doc) => doc.data()));
-    });
+    // Listen in real time
+    const unsubscribe = onSnapshot(
+      nextApptQuery,
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const docSnap = snapshot.docs[0]
+          setNextAppointment({ ref: docSnap.ref, ...docSnap.data() })
+        } else {
+          setNextAppointment(null)
+        }
+        setLoadingAppointment(false)
+      },
+      (error) => {
+        console.error("Error fetching next appointment:", error)
+        setAppointmentError("Could not load upcoming appointment.")
+        setLoadingAppointment(false)
+      }
+    )
+
+    return () => unsubscribe()
+  }, [user])
+
+  // 3) Past Appointment History (real-time listener)
+  const [appointmentHistory, setAppointmentHistory] = useState([])
+  const [loadingHistory, setLoadingHistory] = useState(true)
+  const [historyOpen, setHistoryOpen] = useState(false)
+
+  useEffect(() => {
+    if (!user) return
+
+    setLoadingHistory(true)
+    const todayStr = format(new Date(), "yyyy-MM-dd")
+
+    const historyQuery = query(
+      collectionGroup(db, "availability"),
+      where("patientId", "==", user.uid),
+      where("canceled", "==", false),
+      where("date", "<", todayStr),
+      orderBy("date", "desc"),
+      orderBy("startTime", "desc")
+    )
+
+    const unsubscribe = onSnapshot(
+      historyQuery,
+      (snapshot) => {
+        const pastList = snapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data(),
+        }))
+        setAppointmentHistory(pastList)
+        setLoadingHistory(false)
+      },
+      (error) => {
+        console.error("Error fetching appointment history:", error)
+        setLoadingHistory(false)
+      }
+    )
+
+    return () => unsubscribe()
+  }, [user])
+
+  // 4) Personal Stats (real-time listener)
+  const [stats, setStats] = useState({ totalBooked: 0, totalCanceled: 0 })
+  const [loadingStats, setLoadingStats] = useState(true)
+
+  useEffect(() => {
+    if (!user) return
+
+    setLoadingStats(true)
+
+    const bookedQuery = query(
+      collectionGroup(db, "availability"),
+      where("patientId", "==", user.uid),
+      where("canceled", "==", false)
+    )
+    const canceledQuery = query(
+      collectionGroup(db, "availability"),
+      where("patientId", "==", user.uid),
+      where("canceled", "==", true)
+    )
+
+    let bookedUnsub, canceledUnsub
+
+    bookedUnsub = onSnapshot(
+      bookedQuery,
+      (snapshot) => {
+        setStats((prev) => ({ ...prev, totalBooked: snapshot.size }))
+      },
+      (err) => {
+        console.error("Error counting booked:", err)
+      }
+    )
+
+    canceledUnsub = onSnapshot(
+      canceledQuery,
+      (snapshot) => {
+        setStats((prev) => ({ ...prev, totalCanceled: snapshot.size }))
+        setLoadingStats(false)
+      },
+      (err) => {
+        console.error("Error counting canceled:", err)
+        setLoadingStats(false)
+      }
+    )
 
     return () => {
-      unsubscribeAppt();
-      unsubscribeMed();
-      unsubscribeTips();
-    };
-  }, [currentUser]);
+      bookedUnsub()
+      canceledUnsub()
+    }
+  }, [user])
 
-  const appointmentStats = Array.from({ length: 7 }, (_, i) => {
-    const day = new Date();
-    day.setDate(day.getDate() - i);
-    const formatted = day.toLocaleDateString("en-US", { weekday: "short" });
-    const count = appointments.filter((appt) =>
-      new Date(appt.date).toDateString() === day.toDateString()
-    ).length;
-    return { day: formatted, count };
-  }).reverse();
+  // Cancel the current appointment
+  const handleCancelAppointment = async () => {
+    if (!nextAppointment) return
+    try {
+      await nextAppointment.ref.update({
+        booked: false,
+        patientId: null
+      })
+      setNextAppointment(null)
+      setAppointmentError("")
+    } catch (err) {
+      console.error("Error cancelling appointment:", err)
+      setAppointmentError("Failed to cancel appointment.")
+    }
+  }
 
+  // 5) Health Tip pulse toggle
+  const [showTip, setShowTip] = useState(true)
+  useEffect(() => {
+    const interval = setInterval(() => setShowTip((prev) => !prev), 4000)
+    return () => clearInterval(interval)
+  }, [])
+
+  
   return (
-    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      <Typography variant="h5" fontWeight="bold" gutterBottom>
-        Welcome, {currentUser?.displayName || "Patient"}
-      </Typography>
+    <Box>
+      {/* ================================ */}
+      {/* Hero Banner (Animated) */}
+      {/* ================================ */}
+      <motion.div
+        initial={{ opacity: 0, y: -30 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.8 }}
+      >
+        <Box
+          sx={{
+            background: bannerGradient,
+            color: textColor,
+            py: { xs: 4, md: 8 },
+            px: { xs: 2, md: 6 },
+            textAlign: { xs: "center", md: "left" }
+          }}
+        >
+          <Typography
+            variant="h3"
+            sx={{
+              fontWeight: 700,
+              mb: 1,
+              fontSize: { xs: "2rem", md: "3rem" }
+            }}
+          >
+            Hello, {userProfile.name}!
+          </Typography>
 
-      <Grid container spacing={3}>
-        {/* Appointments */}
-        <Grid item xs={12} md={6}>
-          <Card sx={{ height: "100%" }}>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Upcoming Appointments
-              </Typography>
-              {appointments.length > 0 ? (
-                <List dense>
-                  {appointments.slice(0, 5).map((appt) => (
-                    <React.Fragment key={appt.id}>
-                      <ListItem>
-                        <Avatar sx={{ bgcolor: "#56666B", mr: 2 }}>
-                          <Event />
-                        </Avatar>
-                        <ListItemText
-                          primary={appt.doctorName}
-                          secondary={new Date(appt.date).toLocaleString()}
-                        />
-                      </ListItem>
-                      <Divider />
-                    </React.Fragment>
-                  ))}
-                </List>
-              ) : (
-                <Typography>No upcoming appointments.</Typography>
-              )}
-            </CardContent>
-          </Card>
+        </Box>
+      </motion.div>
+
+      <Container maxWidth="lg" sx={{ mt: -3, mb: 6 }}>
+        {/* ================================ */}
+        {/* Next Appointment & Health Tip */}
+        {/* ================================ */}
+        <Grid container spacing={4}>
+          {/* Next Appointment Card */}
+          <Grid item xs={12} md={7}>
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.3, duration: 0.6 }}
+            >
+              <Card
+                elevation={4}
+                sx={{
+                  borderLeft: `6px solid ${accentColor}`,
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "space-between",
+                  height: "100%"
+                }}
+              >
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Your Upcoming Appointment
+                  </Typography>
+                  {loadingAppointment ? (
+                    <CircularProgress size={24} />
+                  ) : nextAppointment ? (
+                    <Box>
+                      <Typography variant="subtitle1">
+                        📅{" "}
+                        {format(parseISO(nextAppointment.date), "MMMM d, yyyy")}
+                      </Typography>
+                      <Typography variant="subtitle1" gutterBottom>
+                        ⏰ {nextAppointment.startTime} –{" "}
+                        {nextAppointment.endTime}
+                      </Typography>
+
+                    </Box>
+                  ) : (
+                    <Typography color="textSecondary">
+                      You have no upcoming appointments.
+                    </Typography>
+                  )}
+
+                </CardContent>
+              </Card>
+            </motion.div>
+          </Grid>
+
+          {/* Health Tip Card (Pulse Animation) */}
+          <Grid item xs={12} md={5}>
+            <motion.div
+              animate={{
+                scale: showTip ? 1.05 : 0.95
+              }}
+              transition={{
+                duration: 1.5,
+                repeat: Infinity,
+                repeatType: "reverse"
+              }}
+            >
+              <Card
+                elevation={4}
+                sx={{
+                  bgcolor: accentColor,
+                  color: textColor,
+                  display: "flex",
+                  alignItems: "center",
+                  p: 3,
+                  height: "100%"
+                }}
+              >
+                <Box sx={{ mr: 2 }}>{tipIcon}</Box>
+                <Box>
+                  <Typography variant="h6" gutterBottom>
+                    Health Tip
+                  </Typography>
+                  <Typography variant="body1">{tip}</Typography>
+                </Box>
+              </Card>
+            </motion.div>
+          </Grid>
         </Grid>
 
-        {/* Medications */}
-        <Grid item xs={12} md={6}>
-          <Card sx={{ height: "100%" }}>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Medication Reminders
-              </Typography>
-              {medications.length > 0 ? (
-                <List dense>
-                  {medications.slice(0, 5).map((med) => (
-                    <React.Fragment key={med.id}>
-                      <ListItem>
-                        <Avatar sx={{ bgcolor: "#D97706", mr: 2 }}>
-                          <Medication />
-                        </Avatar>
-                        <ListItemText
-                          primary={med.name}
-                          secondary={`Dosage: ${med.dosage}, Time: ${med.time}`}
-                        />
-                      </ListItem>
-                      <Divider />
-                    </React.Fragment>
-                  ))}
-                </List>
-              ) : (
-                <Typography>No current medications.</Typography>
-              )}
-            </CardContent>
-          </Card>
-        </Grid>
+        {/* Divider */}
+        <Divider sx={{ my: 6 }} />
 
-        {/* Data Visualization */}
-        <Grid item xs={12} md={8}>
-          <Card sx={{ height: 300 }}>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Weekly Appointment Stats
-              </Typography>
-              <ResponsiveContainer width="100%" height="80%">
-                <BarChart data={appointmentStats}>
-                  <XAxis dataKey="day" />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="count" fill="#56666B" />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Doctor's Tips */}
-        <Grid item xs={12} md={4}>
-          <Card sx={{ height: "100%" }}>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Doctor's Tips
-              </Typography>
-              <List dense>
-                {tips.length > 0 ? (
-                  tips.slice(0, 5).map((tip, idx) => (
-                    <ListItem key={idx}>
-                      <Avatar sx={{ bgcolor: "#10B981", mr: 2 }}>
-                        <TipsAndUpdates />
-                      </Avatar>
-                      <ListItemText primary={tip.title} secondary={tip.description} />
-                    </ListItem>
-                  ))
+        {/* ================================ */}
+        {/* Personal Stats & Appointment History */}
+        {/* ================================ */}
+        <Grid container spacing={4}>
+          {/* Stats Card */}
+          <Grid item xs={12} md={4}>
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.5, duration: 0.6 }}
+            >
+              <Card elevation={3} sx={{ p: 3 }}>
+                <Typography variant="h6" gutterBottom>
+                  Personal Stats
+                </Typography>
+                {loadingStats ? (
+                  <CircularProgress size={24} />
                 ) : (
-                  <Typography>No tips available.</Typography>
+                  <Box>
+                    <Typography variant="body1">
+                      Appointments Booked:{" "}
+                      <motion.span
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 1 }}
+                      >
+                        {stats.totalBooked}
+                      </motion.span>
+                    </Typography>
+                    <Typography variant="body1">
+                      Appointments Canceled:{" "}
+                      <motion.span
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 1 }}
+                      >
+                        {stats.totalCanceled}
+                      </motion.span>
+                    </Typography>
+                  </Box>
                 )}
-              </List>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-    </Container>
-  );
-};
+              </Card>
+            </motion.div>
+          </Grid>
 
-export default PatientDashboard;
+          {/* Appointment History (Collapsible) */}
+          <Grid item xs={12} md={8}>
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.7, duration: 0.6 }}
+            >
+              <Card elevation={3}>
+                <CardContent>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center"
+                    }}
+                  >
+                    <Typography variant="h6">
+                      Appointment History
+                    </Typography>
+                    <IconButton
+                      onClick={() => setHistoryOpen((prev) => !prev)}
+                      aria-label="expand history"
+                    >
+                      <ExpandMoreIcon
+                        sx={{
+                          transform: historyOpen
+                            ? "rotate(180deg)"
+                            : "rotate(0)",
+                          transition: "transform 0.3s"
+                        }}
+                      />
+                    </IconButton>
+                  </Box>
+                  <Collapse in={historyOpen} timeout="auto" unmountOnExit>
+                    {loadingHistory ? (
+                      <Box sx={{ textAlign: "center", py: 2 }}>
+                        <CircularProgress size={20} />
+                      </Box>
+                    ) : appointmentHistory.length === 0 ? (
+                      <Typography color="textSecondary" sx={{ mt: 2 }}>
+                        No past appointments found.
+                      </Typography>
+                    ) : (
+                      <List>
+                        {appointmentHistory.map((appt) => (
+                          <ListItem key={appt.id} divider>
+                            <ListItemText
+                              primary={`📅 ${format(
+                                parseISO(appt.date),
+                                "MMM d, yyyy"
+                              )} ⏰ ${appt.startTime} – ${appt.endTime}`}
+                            />
+                          </ListItem>
+                        ))}
+                      </List>
+                    )}
+                  </Collapse>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </Grid>
+        </Grid>
+
+        {/* Divider */}
+        <Divider sx={{ my: 6 }} />
+
+      </Container>
+
+
+      <Footer />
+    </Box>
+  )
+}
