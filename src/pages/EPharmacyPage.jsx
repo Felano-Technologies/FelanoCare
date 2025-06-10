@@ -1,7 +1,5 @@
 // src/pages/EPharmacyPage.jsx
 import React, { useEffect, useState } from "react";
-import { useAuth } from "../contexts/AuthContext";
-import { useCart } from "../contexts/CartContext";
 import {
   Container,
   Grid,
@@ -13,23 +11,33 @@ import {
   Box,
   CircularProgress,
   Alert,
-  AlertTitle,
   TextField,
-  Paper
+  InputAdornment
 } from "@mui/material";
-import { functions, db, generativeModel } from "../firebase"; // added generativeModel
-import { httpsCallable } from "firebase/functions";
+import {
+  Search,
+  ShoppingCart,
+  PlusCircle,
+  MinusCircle,
+  AlertTriangle,
+  CheckCircle2,
+  Loader2
+} from "lucide-react";
+
 import { collection, getDocs } from "firebase/firestore";
-import DrugSearch from "../components/DrugSearch";
-import { getAge, getAgeCategory } from "../utils/age"; // added for AI prompt
+import { db, functions } from "../firebase";
+import { useAuth } from "../contexts/AuthContext";
+import { useCart } from "../contexts/CartContext";
+import { httpsCallable } from "firebase/functions";
 
 export default function EPharmacyPage() {
-  const { user, userProfile } = useAuth(); // added userProfile
+  const { user } = useAuth();
   const { cartItems, addToCart, removeFromCart } = useCart();
 
   const [allProducts, setAllProducts] = useState([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
 
   const [interactionWarnings, setInteractionWarnings] = useState([]);
   const [loadingInteractions, setLoadingInteractions] = useState(false);
@@ -37,64 +45,19 @@ export default function EPharmacyPage() {
   const [recommendations, setRecommendations] = useState([]);
   const [loadingRecs, setLoadingRecs] = useState(false);
 
-  // AI assistant state:
-  const [aiInput, setAiInput] = useState("");
-  const [aiResponse, setAiResponse] = useState("");
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiError, setAiError] = useState("");
+  const fmtCurrency = (n) =>
+    new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+    }).format(n);
 
-  // Determine age category for AI prompt:
-  const birthDate = userProfile?.birthDate || null;
-  const ageCat = birthDate
-    ? getAgeCategory(getAge(birthDate))
-    : "adult";
-
-  const systemPrompts = {
-    youth:  "Suggest easy-to-take medicines for teens.",
-    adult:  "Provide prescription-level medicine advice for adults.",
-    senior: "Recommend gentle medicines suited for seniors."
-  };
-  const systemPrompt = systemPrompts[ageCat] || systemPrompts.adult;
-
-  //  AI assistant handler:
-  const handleGenerateAI = async () => {
-    setAiError("");
-    setAiResponse("");
-
-    if (!aiInput.trim()) {
-      setAiError("Please enter a question or concern for medicine advice.");
-      return;
-    }
-
-    setAiLoading(true);
-    try {
-      const fullPrompt = `
-${systemPrompt}
-
-User’s query: ${aiInput.trim()}
-
-Please provide clear, age-appropriate guidance on medicines, including typical dosage forms, key safety tips, and any common cautions.
-`;
-      const result = await generativeModel.generateContent(fullPrompt);
-      const text = result.response.text();
-      setAiResponse(text);
-    } catch (err) {
-      console.error("Gemini generateContent error:", err);
-      setAiError(err.message || "Failed to get AI advice.");
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
-  // 1) Fetch all products from Firestore on mount
   useEffect(() => {
-    setLoadingProducts(true);
     const fetchProducts = async () => {
       try {
         const snap = await getDocs(collection(db, "products"));
         const prodList = snap.docs.map((doc) => ({
           drugId: doc.id,
-          ...doc.data()
+          ...doc.data(),
         }));
         setAllProducts(prodList);
       } catch (err) {
@@ -107,7 +70,6 @@ Please provide clear, age-appropriate guidance on medicines, including typical d
     fetchProducts();
   }, []);
 
-  // 2) Interaction Checker (unchanged)
   useEffect(() => {
     const prescriptionIds = cartItems
       .filter((item) => item.category === "prescription")
@@ -116,21 +78,17 @@ Please provide clear, age-appropriate guidance on medicines, including typical d
       setInteractionWarnings([]);
       return;
     }
+
     setLoadingInteractions(true);
     const checkInteractions = httpsCallable(functions, "checkInteractions");
     checkInteractions({ prescriptionIds })
       .then((res) => {
         setInteractionWarnings(res.data.warnings || []);
       })
-      .catch((err) => {
-        console.error("checkInteractions error:", err);
-      })
-      .finally(() => {
-        setLoadingInteractions(false);
-      });
+      .catch((err) => console.error("checkInteractions error:", err))
+      .finally(() => setLoadingInteractions(false));
   }, [cartItems]);
 
-  // 3) Recommendations (unchanged)
   useEffect(() => {
     const prescriptionIds = cartItems
       .filter((item) => item.category === "prescription")
@@ -139,229 +97,172 @@ Please provide clear, age-appropriate guidance on medicines, including typical d
       setRecommendations([]);
       return;
     }
+
     setLoadingRecs(true);
-    const getRecommendations = httpsCallable(
-      functions,
-      "getRecommendations"
-    );
+    const getRecommendations = httpsCallable(functions, "getRecommendations");
     getRecommendations({
       userId: user.uid,
-      currentPrescriptionIds: prescriptionIds
+      currentPrescriptionIds: prescriptionIds,
     })
       .then((res) => {
         setRecommendations(res.data.recommendations || []);
       })
-      .catch((err) => {
-        console.error("getRecommendations error:", err);
-      })
-      .finally(() => {
-        setLoadingRecs(false);
-      });
+      .catch((err) => console.error("getRecommendations error:", err))
+      .finally(() => setLoadingRecs(false));
   }, [user, cartItems]);
 
-  const fmtCurrency = (n) =>
-    new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD"
-    }).format(n);
+  const filteredProducts = allProducts.filter((prod) =>
+    prod.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
-      <Typography variant="h4" gutterBottom>
-        E-Pharmacy
+      {/* Header */}
+      <Typography variant="h4" fontWeight="bold" gutterBottom>
+        🧴 E-Pharmacy Store
       </Typography>
 
-      {/* ==== AI Medicine Advisor ==== */}
-      <Paper elevation={2} sx={{ p: 3, mb: 4 }}>
-        <Typography variant="h6" gutterBottom>
-          AI Medicine Advisor
-        </Typography>
-
-        <Box
-          component="form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleGenerateAI();
+      {/* Search Box */}
+      <Box sx={{ my: 3, maxWidth: 500, mx: "auto" }}>
+        <TextField
+          fullWidth
+          placeholder="Search medicines..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <Search size={20} />
+              </InputAdornment>
+            ),
           }}
-          sx={{ display: "flex", flexDirection: "column", gap: 2, mb: 2 }}
-        >
-          <TextField
-            label="Ask about medicines"
-            placeholder="e.g. What’s a suitable pain reliever for a senior?"
-            value={aiInput}
-            onChange={(e) => setAiInput(e.target.value)}
-            fullWidth
-            multiline
-            minRows={2}
-            required
-          />
+          variant="outlined"
+        />
+      </Box>
 
-          <Button
-            type="submit"
-            variant="contained"
-            disabled={aiLoading}
-            sx={{ alignSelf: "flex-start", textTransform: "none" }}
-          >
-            {aiLoading ? <CircularProgress size={20} /> : "Get Advice"}
-          </Button>
-        </Box>
-
-        {aiError && (
-          <Typography variant="body2" color="error" sx={{ mb: 2 }}>
-            {aiError}
+      {/* Products */}
+      <Box mt={4}>
+        {loadingProducts ? (
+          <Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>
+            <Loader2 className="animate-spin" />
+          </Box>
+        ) : loadError ? (
+          <Alert severity="error">{loadError}</Alert>
+        ) : filteredProducts.length === 0 ? (
+          <Typography color="text.secondary" align="center">
+            No medicines found.
           </Typography>
-        )}
-
-        {aiResponse && (
-          <Paper
-            elevation={1}
-            sx={{
-              p: 2,
-              whiteSpace: "pre-wrap",
-              backgroundColor: "background.paper",
-              maxHeight: "40vh",
-              overflowY: "auto"
-            }}
-          >
-            <Typography variant="subtitle1" gutterBottom>
-              AI Response:
-            </Typography>
-            <Typography variant="body1">{aiResponse}</Typography>
-          </Paper>
-        )}
-      </Paper>
-
-      {/* ==== HERE’S THE DRUG SEARCH ==== */}
-      <DrugSearch />
-
-      {/* ==== THEN YOUR EXISTING PRODUCTS GRID ==== */}
-      {loadingProducts ? (
-        <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
-          <CircularProgress />
-        </Box>
-      ) : loadError ? (
-        <Alert severity="error">{loadError}</Alert>
-      ) : allProducts.length === 0 ? (
-        <Typography color="textSecondary">
-          (No products in Firestore “products” collection.)
-        </Typography>
-      ) : (
-        <Grid container spacing={2}>
-          {allProducts.map((prod) => {
-            const inCart = cartItems.some(
-              (item) => item.drugId === prod.drugId
-            );
-            return (
-              <Grid item xs={12} sm={6} md={4} lg={3} key={prod.drugId}>
-                <Card elevation={3}>
-                  <CardContent>
-                    <Typography variant="h6">{prod.name}</Typography>
-                    <Typography
-                      variant="body2"
-                      color="textSecondary"
-                      sx={{ mb: 1 }}
-                    >
-                      {prod.category.charAt(0).toUpperCase() +
-                        prod.category.slice(1)}
-                    </Typography>
-                    <Typography variant="subtitle1">
-                      {fmtCurrency(prod.price)}
-                    </Typography>
-                  </CardContent>
-                  <CardActions>
-                    {inCart ? (
-                      <Button
-                        color="error"
-                        onClick={() => removeFromCart(prod.drugId)}
-                        sx={{ textTransform: "none" }}
-                      >
-                        Remove
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="contained"
-                        onClick={() =>
-                          addToCart(prod.drugId, prod.price, prod.category)
-                        }
-                        sx={{ textTransform: "none" }}
-                      >
-                        Add to Cart
-                      </Button>
+        ) : (
+          <Grid container spacing={3}>
+            {filteredProducts.map((prod) => {
+              const inCart = cartItems.some((item) => item.drugId === prod.drugId);
+              return (
+                <Grid item xs={12} sm={6} md={4} lg={3} key={prod.drugId}>
+                  <Card
+                    elevation={1}
+                    sx={{
+                      display: "flex",
+                      flexDirection: "column",
+                      height: "100%",
+                      borderRadius: 3,
+                      overflow: "hidden",
+                      "&:hover": { boxShadow: 6 },
+                    }}
+                  >
+                    {prod.imageUrl && (
+                      <Box
+                        component="img"
+                        src={prod.imageUrl}
+                        alt={prod.name}
+                        sx={{ width: "100%", height: 160, objectFit: "cover" }}
+                      />
                     )}
-                  </CardActions>
-                </Card>
-              </Grid>
-            );
-          })}
-        </Grid>
-      )}
+                    <CardContent sx={{ flexGrow: 1 }}>
+                      <Typography variant="h6" noWrap>
+                        {prod.name}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" gutterBottom>
+                        {prod.category}
+                      </Typography>
+                      <Typography variant="subtitle1" fontWeight="bold">
+                        {fmtCurrency(prod.price)}
+                      </Typography>
+                    </CardContent>
+                    <CardActions>
+                      {inCart ? (
+                        <Button
+                          color="error"
+                          onClick={() => removeFromCart(prod.drugId)}
+                          startIcon={<MinusCircle />}
+                          fullWidth
+                        >
+                          Remove
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="contained"
+                          onClick={() =>
+                            addToCart(prod.drugId, prod.price, prod.category)
+                          }
+                          startIcon={<PlusCircle />}
+                          fullWidth
+                        >
+                          Add to Cart
+                        </Button>
+                      )}
+                    </CardActions>
+                  </Card>
+                </Grid>
+              );
+            })}
+          </Grid>
+        )}
+      </Box>
 
-      {/* ==== INTERACTION WARNINGS ==== */}
-      {(loadingInteractions || interactionWarnings.length > 0) && (
-        <Box sx={{ mt: 4 }}>
-          <Typography variant="h6" gutterBottom>
-            Interaction Checker
-          </Typography>
+      {/* Interaction Warnings */}
+      {interactionWarnings.length > 0 && (
+        <Box sx={{ mt: 5 }}>
+          <Box display="flex" alignItems="center" gap={1} mb={1}>
+            <AlertTriangle size={20} />
+            <Typography variant="h6">Interaction Warnings</Typography>
+          </Box>
+
           {loadingInteractions ? (
-            <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}>
-              <CircularProgress size={20} />
-            </Box>
-          ) : interactionWarnings.length === 0 ? (
-            <Alert severity="success">No known interactions detected.</Alert>
+            <CircularProgress size={20} />
           ) : (
             interactionWarnings.map((w, idx) => (
               <Alert
-                key={`${w.drugA}_${w.drugB}_${idx}`}
+                key={idx}
                 severity={w.severity >= 4 ? "error" : "warning"}
                 sx={{ mb: 2 }}
               >
-                <AlertTitle>
-                  {w.severity >= 4 ? "High-Risk Interaction" : "Interaction"}
-                </AlertTitle>
-                {`“${w.drugA}” interacts with “${w.drugB}”: ${w.message}`}
+                {`${w.drugA} + ${w.drugB} — ${w.message}`}
               </Alert>
             ))
           )}
         </Box>
       )}
 
-      {/* ==== RECOMMENDATIONS ==== */}
-      {(loadingRecs || recommendations.length > 0) && (
-        <Box sx={{ mt: 4 }}>
-          <Typography variant="h6" gutterBottom>
-            You Might Also Need
-          </Typography>
-          {loadingRecs ? (
-            <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}>
-              <CircularProgress size={20} />
-            </Box>
-          ) : recommendations.length === 0 ? (
-            <Typography color="textSecondary">
-              No recommendations at this time.
-            </Typography>
-          ) : (
-            <Grid container spacing={2}>
-              {recommendations.map((rec) => (
-                <Grid item xs={12} sm={6} md={4} key={rec.drugId}>
-                  <Card elevation={2} sx={{ p: 2 }}>
-                    <Typography variant="subtitle1">{rec.name}</Typography>
-                    <Typography variant="body2" color="textSecondary">
-                      {rec.reason}
-                    </Typography>
-                    <Button
-                      variant="contained"
-                      sx={{ mt: 1, textTransform: "none" }}
-                      onClick={() =>
-                        addToCart(rec.drugId, rec.price || 0, rec.category || "otc")
-                      }
-                    >
-                      Add to Cart
-                    </Button>
-                  </Card>
-                </Grid>
-              ))}
-            </Grid>
-          )}
+      {/* Recommendations */}
+      {recommendations.length > 0 && (
+        <Box sx={{ mt: 5 }}>
+          <Box display="flex" alignItems="center" gap={1} mb={1}>
+            <CheckCircle2 size={20} />
+            <Typography variant="h6">Recommended For You</Typography>
+          </Box>
+
+          <Grid container spacing={2}>
+            {recommendations.map((rec) => (
+              <Grid item xs={12} sm={6} md={4} lg={3} key={rec.drugId}>
+                <Card elevation={1}>
+                  <CardContent>
+                    <Typography variant="h6">{rec.name}</Typography>
+                    <Typography color="text.secondary">{rec.reason}</Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
         </Box>
       )}
     </Container>

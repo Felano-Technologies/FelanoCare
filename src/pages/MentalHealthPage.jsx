@@ -1,5 +1,3 @@
-// src/pages/MentalHealthPage.jsx
-
 import React, { useState } from "react"
 import { useAuth } from "../contexts/AuthContext"
 import {
@@ -9,33 +7,35 @@ import {
   TextField,
   Button,
   CircularProgress,
-  Paper
+  Paper,
+  Card,
+  CardContent,
+  Divider
 } from "@mui/material"
+import { BrainCircuit, Sparkles } from "lucide-react"
 import { generativeModel } from "../firebase"
 import { getAge, getAgeCategory } from "../utils/age"
+import { marked } from "marked"
+
 
 export default function MentalHealthPage() {
   const { userProfile } = useAuth()
-  const [input, setInput]     = useState("")
+  const [input, setInput] = useState("")
   const [loading, setLoading] = useState(false)
-  const [error, setError]     = useState("")
-  const [advice, setAdvice]   = useState("")
+  const [error, setError] = useState("")
+  const [advice, setAdvice] = useState("")
 
-  // 1) Determine age category (fallback to "adult" if missing)
   const birthDate = userProfile?.birthDate || null
-  const ageCat    = birthDate
-    ? getAgeCategory(getAge(birthDate))
-    : "adult"
+  const ageCat = birthDate ? getAgeCategory(getAge(birthDate)) : "adult"
 
-  // 2) Map age categories to brief system prompts
   const systemPrompts = {
-    youth:   "You are a supportive counselor for teenage concerns.",
-    adult:   "You are a professional mental health assistant for adults.",
-    senior:  "You are a compassionate mental health guide for seniors."
+    youth: "You are a supportive counselor for teenage concerns.",
+    adult: "You are a professional mental health assistant for adults.",
+    senior: "You are a compassionate mental health guide for seniors."
   }
+
   const systemPrompt = systemPrompts[ageCat] || systemPrompts.adult
 
-  // 3) Handler to call Gemini and get advice
   const handleGenerate = async () => {
     setError("")
     setAdvice("")
@@ -47,7 +47,6 @@ export default function MentalHealthPage() {
 
     setLoading(true)
     try {
-      // Combine system prompt + user’s input into one message
       const fullPrompt = `
 ${systemPrompt}
 
@@ -56,10 +55,8 @@ User’s concern/question: ${input.trim()}
 Please provide empathetic, actionable advice and coping strategies. Structure your response in short paragraphs or bullet points as needed.
 `
 
-      // Call the Gemini model
       const result = await generativeModel.generateContent(fullPrompt)
-      const text   = result.response.text()
-
+      const text = result.response.text()
       setAdvice(text)
     } catch (err) {
       console.error("Gemini generateContent error:", err)
@@ -70,67 +67,97 @@ Please provide empathetic, actionable advice and coping strategies. Structure yo
   }
 
   return (
-    <Container maxWidth="md" sx={{ py: 4 }}>
-      <Typography variant="h4" gutterBottom>
-        Psychology & Mental Health Support
-      </Typography>
-
-      <Typography variant="body1" sx={{ mb: 2 }}>
-        Whether you’re feeling anxious, stressed, or simply need someone to talk to, our AI counselor is here to help.  
-        Describe your current feelings, challenges, or questions—our AI will provide empathetic guidance and coping strategies tailored to your age group.
-      </Typography>
-
-      <Box
-        component="form"
-        onSubmit={(e) => {
-          e.preventDefault()
-          handleGenerate()
-        }}
-        sx={{ display: "flex", flexDirection: "column", gap: 2, mb: 3 }}
-      >
-        <TextField
-          label="Your concern or question"
-          placeholder="e.g. I’ve been feeling anxious about starting college."
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          fullWidth
-          multiline
-          minRows={3}
-          required
-        />
-
-        <Button
-          type="submit"
-          variant="contained"
-          size="large"
-          disabled={loading}
-          sx={{ alignSelf: "flex-start", textTransform: "none" }}
-        >
-          {loading ? <CircularProgress size={20} /> : "Get Support"}
-        </Button>
+    <Container maxWidth="sm" sx={{ py: 6 }}>
+      <Box textAlign="center" mb={4}>
+        <BrainCircuit size={48} color="#56666B" />
+        <Typography variant="h4" fontWeight="bold" mt={1}>
+          Mental Health Support
+        </Typography>
+        <Typography variant="subtitle1" color="text.secondary">
+          Receive AI-guided emotional support, tailored for you.
+        </Typography>
       </Box>
 
-      {error && (
-        <Typography variant="body2" color="error" sx={{ mb: 2 }}>
-          {error}
-        </Typography>
-      )}
+      <Card variant="outlined" sx={{ borderRadius: 4, p: 3 }}>
+        <CardContent>
+          <Typography variant="body2" color="text.secondary" mb={2}>
+            Feeling overwhelmed, anxious, or uncertain? Share what’s on your mind, and our AI will respond with empathetic, age-appropriate support.
+          </Typography>
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              handleGenerate()
+            }}
+          >
+            <TextField
+              label="What’s on your mind?"
+              placeholder="e.g. I’m struggling with social anxiety lately..."
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              fullWidth
+              multiline
+              minRows={3}
+              required
+            />
+
+            {error && (
+              <Typography variant="body2" color="error" mt={1}>
+                {error}
+              </Typography>
+            )}
+
+            <Button
+              type="submit"
+              variant="contained"
+              size="large"
+              fullWidth
+              disabled={loading}
+              sx={{
+                mt: 2,
+                textTransform: "none",
+                backgroundColor: "#56666B",
+                "&:hover": {
+                  backgroundColor: "#46585C"
+                }
+              }}
+            >
+              {loading ? (
+                <CircularProgress size={20} sx={{ color: "#fff" }} />
+              ) : (
+                <>
+                  <Sparkles size={18} style={{ marginRight: 8 }} />
+                  Get Support
+                </>
+              )}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
       {advice && (
         <Paper
-          elevation={2}
+          elevation={3}
           sx={{
+            mt: 4,
             p: 3,
+            borderRadius: 3,
+            backgroundColor: "#fefefe",
             whiteSpace: "pre-wrap",
-            backgroundColor: "background.paper",
+            overflowY: "auto",
             maxHeight: "60vh",
-            overflowY: "auto"
+            animation: "fadeIn 0.4s ease-in-out"
           }}
         >
           <Typography variant="h6" gutterBottom>
-            AI‐Generated Guidance
+            Your Personalized Guidance
           </Typography>
-          <Typography variant="body1">{advice}</Typography>
+          <Divider sx={{ mb: 2 }} />
+          <Typography
+            variant="body1"
+            component="div"
+            dangerouslySetInnerHTML={{ __html: marked.parse(advice) }}
+          />
         </Paper>
       )}
     </Container>
