@@ -1,3 +1,4 @@
+// src/routes/ProRoutes.jsx
 import React from "react"
 import { Routes, Route } from "react-router-dom"
 import RequireAuth from "../components/RequireAuth"
@@ -7,13 +8,14 @@ export default function ProRoutes() {
   return (
     <Routes>
       <Route
-        path="/pro-dashboard"
+        path="pro-dashboard"
         element={
           <RequireAuth role="professional">
             <ProfessionalDashboard />
           </RequireAuth>
         }
       />
+      <Route path="*" element={<div>🚀 ProRoutes loaded!</div>} />
     </Routes>
   )
 }

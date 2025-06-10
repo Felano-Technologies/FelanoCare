@@ -50,16 +50,16 @@ export default function NavBar() {
 
   const handleMenuClick = (e) => setAnchorEl(e.currentTarget)
   const handleMenuClose = () => setAnchorEl(null)
-
+    
   const menuItems = [
-    { text: "Dashboard", icon: <HomeIcon />, path: userProfile.role === "professional" ? "/pro-dashboard" : "/patient-dashboard" },
+    { text: "Dashboard", icon: <HomeIcon />, path: userProfile.role === "professional" ? "/pro/pro-dashboard" : "/patient/dashboard" },
     ...(userProfile.role === "patient" ? [
-      { text: "Booking",         icon: <EventIcon />,        path: "/booking" },
-      { text: "E-Pharmacy",      icon: <LocalPharmacyIcon />, path: "/epharmacy" },
-      { text: "Dietetics",       icon: <RestaurantIcon />,    path: "/dietetics" },
-      { text: "Mental Health",   icon: <PsychologyIcon />,    path: "/mental-health" },
-      { text: "Herbal Medicine", icon: <SpaIcon />,           path: "/herbal" },
-      { text: "AI Assistant",    icon: <ChatIcon />,          path: "/ai" },
+      { text: "Booking",         icon: <EventIcon />,        path: "/patient/book-consultation" },
+      { text: "E-Pharmacy",      icon: <LocalPharmacyIcon />, path: "/patient/epharmacy" },
+      { text: "Dietetics",       icon: <RestaurantIcon />,    path: "/patient/dietetics" },
+      { text: "Mental Health",   icon: <PsychologyIcon />,    path: "/patient/mental-health" },
+      { text: "Herbal Medicine", icon: <SpaIcon />,           path: "/patient/herbal" },
+      { text: "AI Assistant",    icon: <ChatIcon />,          path: "/patient/ai" },
     ] : [])
   ]
 

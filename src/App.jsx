@@ -1,5 +1,6 @@
+// src/App.jsx
 import React from "react"
-import { Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom"
+import { Routes, Route, Navigate, useLocation } from "react-router-dom"
 import { ThemeProvider } from "@mui/material/styles"
 import { useAuth } from "./contexts/AuthContext"
 import { useCart } from "./contexts/CartContext"
@@ -8,27 +9,22 @@ import { getAge, getAgeCategory } from "./utils/age"
 import Login from "./pages/Login"
 import PatientSignup from "./components/PatientSignUp"
 import ProfessionalSignup from "./components/ProfessionalSignUp"
-import RequireAuth from "./components/RequireAuth"
 import ProfileForm from "./components/ProfileForm"
 import NavBar from "./components/NavBar"
 import { youthTheme, adultTheme, seniorTheme } from "./themes"
 
-import IconButton from "@mui/material/IconButton"
-import Badge from "@mui/material/Badge"
-import Button from "@mui/material/Button"
-import Typography from "@mui/material/Typography"
 import CircularProgress from "@mui/material/CircularProgress"
-import ShoppingCartIcon from "@mui/icons-material/ShoppingCart"
 
 // Route Groups
 import PatientRoutes from "./routes/PatientRoutes"
 import ProRoutes from "./routes/ProRoutes"
+
 export default function App() {
-  const { user, userProfile, loading, logout } = useAuth()
+  const { user, userProfile, loading } = useAuth()
   const { cartItems } = useCart()
-  const navigate = useNavigate()
   const location = useLocation()
 
+  // 1) Show global loading
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', marginTop: '20%' }}>
@@ -37,10 +33,8 @@ export default function App() {
     )
   }
 
-  // Check if current route is public
+  // 2) Public signup routes
   const isPublicRoute = ['/signup', '/pro-signup'].includes(location.pathname)
-
-  // Handle public routes
   if (isPublicRoute) {
     return (
       <ThemeProvider theme={adultTheme}>
@@ -53,11 +47,12 @@ export default function App() {
     )
   }
 
-  // From this point, we're dealing with protected routes
+  // 3) Not logged in → show login
   if (!user) {
     return <Login />
   }
 
+  // 4) Profile loading
   if (!userProfile) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', marginTop: '20%' }}>
@@ -66,13 +61,12 @@ export default function App() {
     )
   }
 
-  // Check for missing profile fields
-  const missingFields = !userProfile.name || !userProfile.birthDate
-  if (missingFields) {
+  // 5) Incomplete profile → show form
+  if (!userProfile.name || !userProfile.birthDate) {
     return <ProfileForm />
   }
 
-  // Determine theme based on role
+  // 6) Choose MUI theme
   let chosenTheme = adultTheme
   if (userProfile.role === "patient") {
     const age = getAge(userProfile.birthDate)
@@ -81,32 +75,30 @@ export default function App() {
     chosenTheme = themesMap[category]
   }
 
-  const totalItems = cartItems?.reduce((sum, item) => sum + item.quantity, 0) || 0
-
   return (
     <ThemeProvider theme={chosenTheme}>
-      <NavBar />
-
+      <NavBar totalItems={cartItems.reduce((sum, i) => sum + i.quantity, 0)} />
 
       <Routes>
-        {/* PATIENT ROUTES */}
-        <Route path="/*" element={<PatientRoutes />} />
+        {/* Patient routes under /patient/* */}
+        <Route path="/patient/*" element={<PatientRoutes />} />
 
-        {/* PROFESSIONAL ROUTES */}
-        <Route path="/*" element={<ProRoutes />} />
+        {/* Pro routes under /pro/* */}
+        <Route path="/pro/*" element={<ProRoutes />} />
 
-        {/* ROLE-BASED ROOT REDIRECT */}
+        {/* Root redirect based on role */}
         <Route
           path="/"
           element={
             userProfile.role === "professional" ? (
-              <Navigate to="/pro-dashboard" replace />
+              <Navigate to="/pro/pro-dashboard" replace />
             ) : (
-              <Navigate to="/patient-dashboard" replace />
+              <Navigate to="/patient/patient-dashboard" replace />
             )
           }
         />
 
+        {/* Catch-all */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </ThemeProvider>

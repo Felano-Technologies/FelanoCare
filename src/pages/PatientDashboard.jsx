@@ -1,5 +1,5 @@
 // src/pages/PatientDashboard.jsx
-import React, { useEffect, useState } from "react"
+import React, { useEffect, useState, useMemo } from "react"
 import { useAuth } from "../contexts/AuthContext"
 import { getAge, getAgeCategory } from "../utils/age"
 import { useNavigate } from "react-router-dom"
@@ -9,17 +9,14 @@ import {
   Grid,
   Card,
   CardContent,
+  CardHeader,
   CardActions,
   Button,
   Box,
   CircularProgress,
   Divider,
-  Paper,
   Collapse,
-  IconButton,
-  List,
-  ListItem,
-  ListItemText
+  IconButton
 } from "@mui/material"
 import {
   Event as EventIcon,
@@ -34,6 +31,8 @@ import {
   SelfImprovement as SelfImprovementIcon,
   ExpandMore as ExpandMoreIcon
 } from "@mui/icons-material"
+import { motion } from "framer-motion"
+import Footer from "../components/Footer"
 import { format, parseISO } from "date-fns"
 import { db } from "../firebase"
 import {
@@ -44,10 +43,29 @@ import {
   limit,
   onSnapshot
 } from "firebase/firestore"
-import { motion } from "framer-motion"
-import Footer from "../components/Footer"
+import {
+  Calendar as CalendarIcon,
+  UserCheck as UserCheckIcon,
+  UserX as UserXIcon,
+  BarChart2 as BarChartIcon,
+  PieChart as PieChartIcon,
+  Sliders as SlidersIcon
+} from "lucide-react"
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  PieChart,
+  Pie,
+  Legend,
+  Cell
+} from "recharts"
 
-// Configuration per age category
+// **Your original colors & tips**
 const CATEGORY_CONFIG = {
   youth: {
     bannerGradient: "linear-gradient(135deg, #6A11CB 20%, #2575FC 80%)",
@@ -57,7 +75,7 @@ const CATEGORY_CONFIG = {
     tipIcon: <FitnessCenterIcon fontSize="large" />,
   },
   adult: {
-    bannerGradient: "linear-gradient(135deg, #2193b0 20%, #6dd5ed 80%)",
+    bannerGradient: "linear-gradient(135deg,rgb(0, 60, 255) 20%,rgb(0, 172, 225) 80%)",
     accentColor: "#2193b0",
     textColor: "#FFFFFF",
     tip: "🧘‍♀️ Remember to take breaks, manage stress, and stay hydrated.",
@@ -76,9 +94,9 @@ export default function PatientDashboard() {
   const { user, userProfile } = useAuth()
   const navigate = useNavigate()
 
-  // 1) Calculate age and category
+  // Age & category
   const age = getAge(userProfile.birthDate)
-  const category = getAgeCategory(age) // "youth" | "adult" | "senior"
+  const category = getAgeCategory(age)
   const {
     bannerGradient,
     accentColor,
@@ -87,168 +105,112 @@ export default function PatientDashboard() {
     tipIcon
   } = CATEGORY_CONFIG[category] || CATEGORY_CONFIG.adult
 
-  // 2) Next Upcoming Appointment (real-time listener)
+  // Upcoming appointment
   const [nextAppointment, setNextAppointment] = useState(null)
   const [loadingAppointment, setLoadingAppointment] = useState(true)
-  const [appointmentError, setAppointmentError] = useState("")
 
+  // History & stats
+  const [appointmentHistory, setAppointmentHistory] = useState([])
+  const [loadingHistory, setLoadingHistory] = useState(true)
+  const [stats, setStats] = useState({ booked: 0, canceled: 0 })
+  const [loadingStats, setLoadingStats] = useState(true)
+  const [historyOpen, setHistoryOpen] = useState(false)
+
+  // Fetch upcoming
   useEffect(() => {
     if (!user) return
-
     setLoadingAppointment(true)
-    const todayStr = format(new Date(), "yyyy-MM-dd")
-
-    // Query for the soonest non-canceled slot where patientId == user.uid
-    const nextApptQuery = query(
+    const today = format(new Date(), "yyyy-MM-dd")
+    const q = query(
       collectionGroup(db, "availability"),
       where("patientId", "==", user.uid),
       where("canceled", "==", false),
-      where("date", ">=", todayStr),
+      where("date", ">=", today),
       orderBy("date", "asc"),
       orderBy("startTime", "asc"),
       limit(1)
     )
-
-    // Listen in real time
-    const unsubscribe = onSnapshot(
-      nextApptQuery,
-      (snapshot) => {
-        if (!snapshot.empty) {
-          const docSnap = snapshot.docs[0]
-          setNextAppointment({ ref: docSnap.ref, ...docSnap.data() })
-        } else {
-          setNextAppointment(null)
-        }
-        setLoadingAppointment(false)
-      },
-      (error) => {
-        console.error("Error fetching next appointment:", error)
-        setAppointmentError("Could not load upcoming appointment.")
-        setLoadingAppointment(false)
-      }
-    )
-
-    return () => unsubscribe()
+    const unsub = onSnapshot(q, snap => {
+      if (snap.empty) setNextAppointment(null)
+      else setNextAppointment({ id: snap.docs[0].id, ...snap.docs[0].data() })
+      setLoadingAppointment(false)
+    })
+    return unsub
   }, [user])
 
-  // 3) Past Appointment History (real-time listener)
-  const [appointmentHistory, setAppointmentHistory] = useState([])
-  const [loadingHistory, setLoadingHistory] = useState(true)
-  const [historyOpen, setHistoryOpen] = useState(false)
-
+  // Fetch history & stats
   useEffect(() => {
     if (!user) return
-
     setLoadingHistory(true)
-    const todayStr = format(new Date(), "yyyy-MM-dd")
+    setLoadingStats(true)
+    const today = format(new Date(), "yyyy-MM-dd")
 
-    const historyQuery = query(
+    // history
+    const histQ = query(
       collectionGroup(db, "availability"),
       where("patientId", "==", user.uid),
-      where("canceled", "==", false),
-      where("date", "<", todayStr),
+      where("date", "<", today),
       orderBy("date", "desc"),
       orderBy("startTime", "desc")
     )
+    const histUnsub = onSnapshot(histQ, snap => {
+      setAppointmentHistory(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+      setLoadingHistory(false)
+    })
 
-    const unsubscribe = onSnapshot(
-      historyQuery,
-      (snapshot) => {
-        const pastList = snapshot.docs.map((docSnap) => ({
-          id: docSnap.id,
-          ...docSnap.data(),
-        }))
-        setAppointmentHistory(pastList)
-        setLoadingHistory(false)
-      },
-      (error) => {
-        console.error("Error fetching appointment history:", error)
-        setLoadingHistory(false)
-      }
-    )
-
-    return () => unsubscribe()
-  }, [user])
-
-  // 4) Personal Stats (real-time listener)
-  const [stats, setStats] = useState({ totalBooked: 0, totalCanceled: 0 })
-  const [loadingStats, setLoadingStats] = useState(true)
-
-  useEffect(() => {
-    if (!user) return
-
-    setLoadingStats(true)
-
-    const bookedQuery = query(
+    // stats
+    const bookedQ = query(
       collectionGroup(db, "availability"),
       where("patientId", "==", user.uid),
       where("canceled", "==", false)
     )
-    const canceledQuery = query(
+    const canceledQ = query(
       collectionGroup(db, "availability"),
       where("patientId", "==", user.uid),
       where("canceled", "==", true)
     )
-
-    let bookedUnsub, canceledUnsub
-
-    bookedUnsub = onSnapshot(
-      bookedQuery,
-      (snapshot) => {
-        setStats((prev) => ({ ...prev, totalBooked: snapshot.size }))
-      },
-      (err) => {
-        console.error("Error counting booked:", err)
-      }
+    const bookedUnsub = onSnapshot(bookedQ, s =>
+      setStats(st => ({ ...st, booked: s.size }))
     )
-
-    canceledUnsub = onSnapshot(
-      canceledQuery,
-      (snapshot) => {
-        setStats((prev) => ({ ...prev, totalCanceled: snapshot.size }))
-        setLoadingStats(false)
-      },
-      (err) => {
-        console.error("Error counting canceled:", err)
-        setLoadingStats(false)
-      }
-    )
+    const canceledUnsub = onSnapshot(canceledQ, s => {
+      setStats(st => ({ ...st, canceled: s.size }))
+      setLoadingStats(false)
+    })
 
     return () => {
+      histUnsub()
       bookedUnsub()
       canceledUnsub()
     }
   }, [user])
 
-  // Cancel the current appointment
-  const handleCancelAppointment = async () => {
-    if (!nextAppointment) return
-    try {
-      await nextAppointment.ref.update({
-        booked: false,
-        patientId: null
-      })
-      setNextAppointment(null)
-      setAppointmentError("")
-    } catch (err) {
-      console.error("Error cancelling appointment:", err)
-      setAppointmentError("Failed to cancel appointment.")
+  // Analytics data
+  const analyticsMonthly = useMemo(() => {
+    const counts = {}
+    const now = new Date()
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      counts[format(d, "MMM yyyy")] = 0
     }
-  }
+    appointmentHistory.forEach(appt => {
+      const m = format(parseISO(appt.date), "MMM yyyy")
+      if (counts[m] !== undefined) counts[m] += 1
+    })
+    return Object.entries(counts).map(([month, count]) => ({ month, count }))
+  }, [appointmentHistory])
 
-  // 5) Health Tip pulse toggle
-  const [showTip, setShowTip] = useState(true)
-  useEffect(() => {
-    const interval = setInterval(() => setShowTip((prev) => !prev), 4000)
-    return () => clearInterval(interval)
-  }, [])
+  const analyticsPie = useMemo(() => {
+    const total = stats.booked + stats.canceled
+    if (total === 0) return []
+    return [
+      { name: "Booked", value: stats.booked },
+      { name: "Canceled", value: stats.canceled }
+    ]
+  }, [stats])
 
-  
   return (
     <Box>
-      {/* ================================ */}
-      {/* Hero Banner (Animated) */}
-      {/* ================================ */}
+      {/* Hero Banner */}
       <motion.div
         initial={{ opacity: 0, y: -30 }}
         animate={{ opacity: 1, y: 0 }}
@@ -259,226 +221,252 @@ export default function PatientDashboard() {
             background: bannerGradient,
             color: textColor,
             py: { xs: 4, md: 8 },
-            px: { xs: 2, md: 6 },
-            textAlign: { xs: "center", md: "left" }
+            px: { xs: 2, md: 6 }
           }}
         >
-          <Typography
-            variant="h3"
-            sx={{
-              fontWeight: 700,
-              mb: 1,
-              fontSize: { xs: "2rem", md: "3rem" }
-            }}
-          >
+          <Typography variant="h3" fontWeight={700}>
             Hello, {userProfile.name}!
           </Typography>
-
+          <Typography variant="h6" mt={1}>
+            Age: {age} —{" "}
+            {category.charAt(0).toUpperCase() + category.slice(1)}
+          </Typography>
         </Box>
       </motion.div>
 
-      <Container maxWidth="lg" sx={{ mt: -3, mb: 6 }}>
-        {/* ================================ */}
-        {/* Next Appointment & Health Tip */}
-        {/* ================================ */}
-        <Grid container spacing={4}>
-          {/* Next Appointment Card */}
-          <Grid item xs={12} md={7}>
-            <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.3, duration: 0.6 }}
+      {/* Full-width container with responsive side padding */}
+      <Container
+        maxWidth="xl"
+        disableGutters
+        sx={{
+          px: { xs: 2, sm: 4, md: 6, lg: 8 },
+          mt: -3,
+          mb: 6
+        }}
+      >
+        {/* Top Cards */}
+        <Grid container spacing={4} sx={{ width: "100%" }}>
+          {/* Upcoming Appointment */}
+          <Grid item xs={12} md={6} sx={{ width: "100%" }}>
+            <Card
+              elevation={4}
+              sx={{
+                borderLeft: `6px solid ${accentColor}`,
+                width: "100%"
+              }}
             >
-              <Card
-                elevation={4}
-                sx={{
-                  borderLeft: `6px solid ${accentColor}`,
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "space-between",
-                  height: "100%"
-                }}
-              >
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Your Upcoming Appointment
-                  </Typography>
-                  {loadingAppointment ? (
-                    <CircularProgress size={24} />
-                  ) : nextAppointment ? (
-                    <Box>
-                      <Typography variant="subtitle1">
-                        📅{" "}
-                        {format(parseISO(nextAppointment.date), "MMMM d, yyyy")}
-                      </Typography>
-                      <Typography variant="subtitle1" gutterBottom>
-                        ⏰ {nextAppointment.startTime} –{" "}
-                        {nextAppointment.endTime}
-                      </Typography>
-
-                    </Box>
-                  ) : (
-                    <Typography color="textSecondary">
-                      You have no upcoming appointments.
+              <CardHeader
+                avatar={<CalendarIcon color={accentColor} />}
+                title="Your Upcoming Appointment"
+              />
+              <CardContent>
+                {loadingAppointment ? (
+                  <CircularProgress />
+                ) : nextAppointment ? (
+                  <>
+                    <Typography>
+                      📅{" "}
+                      {format(parseISO(nextAppointment.date), "MMMM d, yyyy")}
                     </Typography>
-                  )}
-
-                </CardContent>
-              </Card>
-            </motion.div>
-          </Grid>
-
-          {/* Health Tip Card (Pulse Animation) */}
-          <Grid item xs={12} md={5}>
-            <motion.div
-              animate={{
-                scale: showTip ? 1.05 : 0.95
-              }}
-              transition={{
-                duration: 1.5,
-                repeat: Infinity,
-                repeatType: "reverse"
-              }}
-            >
-              <Card
-                elevation={4}
-                sx={{
-                  bgcolor: accentColor,
-                  color: textColor,
-                  display: "flex",
-                  alignItems: "center",
-                  p: 3,
-                  height: "100%"
-                }}
-              >
-                <Box sx={{ mr: 2 }}>{tipIcon}</Box>
-                <Box>
-                  <Typography variant="h6" gutterBottom>
-                    Health Tip
-                  </Typography>
-                  <Typography variant="body1">{tip}</Typography>
-                </Box>
-              </Card>
-            </motion.div>
-          </Grid>
-        </Grid>
-
-        {/* Divider */}
-        <Divider sx={{ my: 6 }} />
-
-        {/* ================================ */}
-        {/* Personal Stats & Appointment History */}
-        {/* ================================ */}
-        <Grid container spacing={4}>
-          {/* Stats Card */}
-          <Grid item xs={12} md={4}>
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ delay: 0.5, duration: 0.6 }}
-            >
-              <Card elevation={3} sx={{ p: 3 }}>
-                <Typography variant="h6" gutterBottom>
-                  Personal Stats
-                </Typography>
-                {loadingStats ? (
-                  <CircularProgress size={24} />
+                    <Typography>
+                      ⏰ {nextAppointment.startTime} –{" "}
+                      {nextAppointment.endTime}
+                    </Typography>
+                  </>
                 ) : (
-                  <Box>
-                    <Typography variant="body1">
-                      Appointments Booked:{" "}
-                      <motion.span
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ duration: 1 }}
-                      >
-                        {stats.totalBooked}
-                      </motion.span>
-                    </Typography>
-                    <Typography variant="body1">
-                      Appointments Canceled:{" "}
-                      <motion.span
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ duration: 1 }}
-                      >
-                        {stats.totalCanceled}
-                      </motion.span>
+                  <Box textAlign="center" py={4}>
+                    <CalendarIcon size={40} opacity={0.3} />
+                    <Typography mt={1} color="text.secondary">
+                      No upcoming appointments.
                     </Typography>
                   </Box>
                 )}
-              </Card>
-            </motion.div>
+              </CardContent>
+            </Card>
           </Grid>
 
-          {/* Appointment History (Collapsible) */}
-          <Grid item xs={12} md={8}>
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.7, duration: 0.6 }}
+          {/* Health Tip */}
+          <Grid item xs={12} md={6} sx={{ width: "100%" }}>
+            <Card
+              elevation={4}
+              sx={{
+                bgcolor: accentColor,
+                color: textColor,
+                display: "flex",
+                alignItems: "center",
+                p: 3,
+                width: "100%"
+              }}
             >
-              <Card elevation={3}>
-                <CardContent>
-                  <Box
-                    sx={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center"
-                    }}
-                  >
-                    <Typography variant="h6">
-                      Appointment History
-                    </Typography>
-                    <IconButton
-                      onClick={() => setHistoryOpen((prev) => !prev)}
-                      aria-label="expand history"
-                    >
-                      <ExpandMoreIcon
-                        sx={{
-                          transform: historyOpen
-                            ? "rotate(180deg)"
-                            : "rotate(0)",
-                          transition: "transform 0.3s"
-                        }}
-                      />
-                    </IconButton>
-                  </Box>
-                  <Collapse in={historyOpen} timeout="auto" unmountOnExit>
-                    {loadingHistory ? (
-                      <Box sx={{ textAlign: "center", py: 2 }}>
-                        <CircularProgress size={20} />
-                      </Box>
-                    ) : appointmentHistory.length === 0 ? (
-                      <Typography color="textSecondary" sx={{ mt: 2 }}>
-                        No past appointments found.
-                      </Typography>
-                    ) : (
-                      <List>
-                        {appointmentHistory.map((appt) => (
-                          <ListItem key={appt.id} divider>
-                            <ListItemText
-                              primary={`📅 ${format(
-                                parseISO(appt.date),
-                                "MMM d, yyyy"
-                              )} ⏰ ${appt.startTime} – ${appt.endTime}`}
-                            />
-                          </ListItem>
-                        ))}
-                      </List>
-                    )}
-                  </Collapse>
-                </CardContent>
-              </Card>
-            </motion.div>
+              <Box sx={{ mr: 2 }}>{tipIcon}</Box>
+              <Box>
+                <Typography variant="h6">Health Tip</Typography>
+                <Typography>{tip}</Typography>
+              </Box>
+            </Card>
           </Grid>
         </Grid>
 
-        {/* Divider */}
         <Divider sx={{ my: 6 }} />
 
-      </Container>
+        {/* Stats & History */}
+        <Grid container spacing={4} sx={{ width: "100%" }}>
+          {/* Personal Stats */}
+          <Grid item xs={12} md={4} sx={{ width: "100%" }}>
+            <Card elevation={3} sx={{ p: 3, width: "100%" }}>
+              <Typography variant="h6" gutterBottom>
+                Personal Stats
+              </Typography>
+              {loadingStats ? (
+                <CircularProgress />
+              ) : (
+                <Box>
+                  <Box display="flex" alignItems="center" mb={1}>
+                    <UserCheckIcon color="green" />
+                    <Typography ml={1}>
+                      Appointments Booked: {stats.booked}
+                    </Typography>
+                  </Box>
+                  <Box display="flex" alignItems="center">
+                    <UserXIcon color="red" />
+                    <Typography ml={1}>
+                      Appointments Canceled: {stats.canceled}
+                    </Typography>
+                  </Box>
+                </Box>
+              )}
+            </Card>
+          </Grid>
 
+          {/* Appointment History */}
+          <Grid item xs={12} md={8} sx={{ width: "100%" }}>
+            <Card elevation={3} sx={{ width: "100%" }}>
+              <CardActions>
+                <Button
+                  endIcon={<ExpandMoreIcon />}
+                  onClick={() => setHistoryOpen(prev => !prev)}
+                >
+                  {historyOpen ? "Hide" : "Show"} Past Appointments
+                </Button>
+              </CardActions>
+              <Collapse in={historyOpen}>
+                <CardContent>
+                  {loadingHistory ? (
+                    <CircularProgress />
+                  ) : appointmentHistory.length === 0 ? (
+                    <Box textAlign="center" py={4}>
+                      <EventIcon sx={{ fontSize: 40, opacity: 0.3 }} />
+                      <Typography mt={1} color="text.secondary">
+                        No past appointments found.
+                      </Typography>
+                    </Box>
+                  ) : (
+                    appointmentHistory.map(appt => (
+                      <Box
+                        key={appt.id}
+                        display="flex"
+                        justifyContent="space-between"
+                        py={1}
+                        borderBottom="1px solid #eee"
+                      >
+                        <Typography>
+                          {format(parseISO(appt.date), "MMM d, yyyy")}
+                        </Typography>
+                        <Typography>
+                          {appt.startTime} – {appt.endTime}
+                        </Typography>
+                      </Box>
+                    ))
+                  )}
+                </CardContent>
+              </Collapse>
+            </Card>
+          </Grid>
+        </Grid>
+
+        <Divider sx={{ my: 6 }} />
+
+        {/* Analytics */}
+        <Typography
+          variant="h5"
+          mb={2}
+          display="flex"
+          alignItems="center"
+        >
+          <BarChartIcon /> <Box ml={1}>Analytics</Box>
+        </Typography>
+        <Grid container spacing={4} sx={{ width: "100%" }}>
+          {/* Line Chart */}
+          <Grid item xs={12} md={6} sx={{ width: "100%" }}>
+            <Card elevation={3} sx={{ width: "100%" }}>
+              <CardHeader title="Last 6 Months" />
+              <CardContent sx={{ height: 250 }}>
+                {analyticsMonthly.every(d => d.count === 0) ? (
+                  <Box textAlign="center" py={6}>
+                    <BarChartIcon size={48} opacity={0.3} />
+                    <Typography mt={1} color="text.secondary">
+                      No data available
+                    </Typography>
+                  </Box>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={analyticsMonthly}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="month" />
+                      <YAxis allowDecimals={false} />
+                      <Tooltip />
+                      <Line
+                        type="monotone"
+                        dataKey="count"
+                        stroke={accentColor}
+                        strokeWidth={3}
+                        dot={{ r: 4, fill: accentColor }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Pie Chart */}
+          <Grid item xs={12} md={6} sx={{ width: "100%" }}>
+            <Card elevation={3} sx={{ width: "100%" }}>
+              <CardHeader title="Booked vs. Canceled" />
+              <CardContent sx={{ height: 250 }}>
+                {analyticsPie.length === 0 ? (
+                  <Box textAlign="center" py={6}>
+                    <PieChartIcon size={48} opacity={0.3} />
+                    <Typography mt={1} color="text.secondary">
+                      No stats yet
+                    </Typography>
+                  </Box>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={analyticsPie}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={50}
+                        outerRadius={80}
+                        paddingAngle={5}
+                      >
+                        <Cell key="booked" fill={accentColor} />
+                        <Cell key="canceled" fill="#8884d8" />
+                      </Pie>
+                      <Legend verticalAlign="bottom" height={36} />
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      </Container>
 
       <Footer />
     </Box>
