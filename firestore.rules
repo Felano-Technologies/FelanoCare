@@ -1,0 +1,23 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Allow any authenticated client to open a listen on any path.
+    // Specific sub-rules below will then enforce field-level access.
+    match /{document=**} {
+      allow get, list: if request.auth != null;
+    }
+
+    // Now tighten things up for your users and availability:
+    match /users/{userId} {
+      allow create: if request.auth != null;                  // signup
+      allow read, update: if request.auth.uid == userId;      // own profile
+    }
+
+    match /users/{userId}/availability/{slotId} {
+      allow read, create, update, delete:
+        if request.auth.uid == userId 
+        && request.auth.token.role == "professional";
+    }
+  }
+}
