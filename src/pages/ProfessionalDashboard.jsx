@@ -3,10 +3,14 @@ import React, { useEffect, useState } from "react"
 import { useAuth } from "../contexts/AuthContext"
 import {
   Container,
-  Typography,
   Box,
+  Typography,
+  Tabs,
+  Tab,
   Paper,
   Grid,
+  Card,
+  CardContent,
   TextField,
   Button,
   Table,
@@ -16,110 +20,108 @@ import {
   TableBody,
   IconButton,
   CircularProgress,
-  Divider,
-  Alert
+  Alert,
+  Chip,
+  keyframes
 } from "@mui/material"
-import DeleteIcon from "@mui/icons-material/Delete"
-import { db } from "../firebase"
 import {
-  collection,
-  addDoc,
-  doc,
-  onSnapshot,
-  updateDoc,
-  getDoc
-} from "firebase/firestore"
+  EventAvailable as AvailableIcon,
+  EventBusy as BookedIcon,
+  EventNote as AllIcon,
+  CancelPresentation as CanceledIcon,
+  Add as AddIcon
+} from "@mui/icons-material"
+import DeleteIcon from "@mui/icons-material/Delete"
+import { collection, addDoc, doc, onSnapshot, updateDoc, getDoc } from "firebase/firestore"
+import { db } from "../firebase"
+
+// animated gradient keyframes
+const gradientAnim = keyframes`
+  0% { background-position: 0% 50% }
+  50% { background-position: 100% 50% }
+  100% { background-position: 0% 50% }
+`
 
 export default function ProfessionalDashboard() {
   const { user, userProfile } = useAuth()
 
-  // ─── Declare all hooks unconditionally ────────────────────────────────────
+  // ─ Hooks ─────────────────────────────────────────────────────────
   const [authLoading, setAuthLoading] = useState(true)
+  const [tab, setTab] = useState(0)
 
+  // form
   const [date, setDate] = useState("")
   const [startTime, setStartTime] = useState("")
   const [endTime, setEndTime] = useState("")
-  const [addError, setAddError] = useState("")
+  const [formError, setFormError] = useState("")
 
+  // slots
   const [slots, setSlots] = useState([])
   const [loadingSlots, setLoadingSlots] = useState(true)
   const [errorSlots, setErrorSlots] = useState("")
 
   const [bookedWithNames, setBookedWithNames] = useState([])
   const [loadingBooked, setLoadingBooked] = useState(true)
-  const [errorBooked, setErrorBooked] = useState("")
 
-  // ─── Effects ───────────────────────────────────────────────────────────────
+  // filters
+  const [filterDate, setFilterDate] = useState("")
+  const [filterStatus, setFilterStatus] = useState("all")
 
-  // 0) Wait until auth & profile are ready
+  // ─ Effects ────────────────────────────────────────────────────────
   useEffect(() => {
     if (user !== undefined && userProfile !== undefined) {
       setAuthLoading(false)
     }
   }, [user, userProfile])
 
-  // 1) Listen to all availability slots
   useEffect(() => {
     if (!user) return
     setLoadingSlots(true)
-    setErrorSlots("")
     const ref = collection(db, "users", user.uid, "availability")
     const unsub = onSnapshot(
       ref,
-      (snap) => {
+      snap => {
         const arr = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-        arr.sort((a, b) => {
-          if (a.date !== b.date) return a.date.localeCompare(b.date)
-          return a.startTime.localeCompare(b.startTime)
-        })
+        arr.sort((a, b) =>
+          a.date !== b.date
+            ? a.date.localeCompare(b.date)
+            : a.startTime.localeCompare(b.startTime)
+        )
         setSlots(arr)
         setLoadingSlots(false)
       },
-      (err) => {
-        console.error("Slots snapshot error:", err)
-        setErrorSlots("Failed to load availability slots.")
+      err => {
+        console.error(err)
+        setErrorSlots("Failed to load slots.")
         setLoadingSlots(false)
       }
     )
     return unsub
   }, [user])
 
-  // 2) Fetch patient names for booked slots
   useEffect(() => {
     const booked = slots.filter(s => s.booked && !s.canceled)
-    if (booked.length === 0) {
+    if (!booked.length) {
       setBookedWithNames([])
       setLoadingBooked(false)
       return
     }
     setLoadingBooked(true)
-    setErrorBooked("")
     Promise.all(
-      booked.map(async (slot) => {
+      booked.map(async slot => {
         try {
-          if (!slot.patientId) throw new Error()
           const snap = await getDoc(doc(db, "users", slot.patientId))
-          return { 
-            ...slot, 
-            patientName: snap.exists() ? snap.data().name : "Unknown" 
-          }
+          return { ...slot, patientName: snap.data()?.name || "Unknown" }
         } catch {
           return { ...slot, patientName: "Unknown" }
         }
       })
-    )
-      .then(res => {
-        setBookedWithNames(res)
-        setLoadingBooked(false)
-      })
-      .catch(err => {
-        console.error("Error fetching patient names:", err)
-        setErrorBooked("Failed to load booked appointments.")
-        setLoadingBooked(false)
-      })
+    ).then(res => {
+      setBookedWithNames(res)
+      setLoadingBooked(false)
+    })
   }, [slots])
 
-  // ─── Guard: show spinner until auth & profile are loaded ───────────────────
   if (authLoading) {
     return (
       <Box
@@ -135,213 +137,262 @@ export default function ProfessionalDashboard() {
     )
   }
 
-  // ─── Handlers ──────────────────────────────────────────────────────────────
-
-  const handleAddSlot = async (e) => {
+  // ─ Handlers ────────────────────────────────────────────────────────
+  const handleAddSlot = async e => {
     e.preventDefault()
-    setAddError("")
+    setFormError("")
     if (!date || !startTime || !endTime) {
-      setAddError("All fields are required.")
+      setFormError("All fields are required.")
       return
     }
     if (endTime <= startTime) {
-      setAddError("End time must be after start time.")
+      setFormError("End must be after start.")
       return
     }
     try {
-      await addDoc(
-        collection(db, "users", user.uid, "availability"),
-        {
-          date,
-          startTime,
-          endTime,
-          booked: false,
-          canceled: false,
-          patientId: null,
-          createdAt: new Date().toISOString()
-        }
-      )
-      setDate("")
-      setStartTime("")
-      setEndTime("")
+      await addDoc(collection(db, "users", user.uid, "availability"), {
+        date,
+        startTime,
+        endTime,
+        booked: false,
+        canceled: false,
+        patientId: null,
+        createdAt: new Date().toISOString()
+      })
+      setDate(""); setStartTime(""); setEndTime("")
     } catch (err) {
-      console.error("Error adding slot:", err)
-      setAddError("Failed to add slot.")
+      console.error(err)
+      setFormError("Failed to add slot.")
     }
   }
 
-  const handleDeleteSlot = async (slotId) => {
+  const handleCancel = async id => {
     try {
-      await updateDoc(
-        doc(db, "users", user.uid, "availability", slotId),
-        { canceled: true }
-      )
+      await updateDoc(doc(db, "users", user.uid, "availability", id), { canceled: true })
     } catch (err) {
-      console.error("Error canceling slot:", err)
+      console.error(err)
     }
   }
 
-  // ─── Render ────────────────────────────────────────────────────────────────
+  // ─ Filtering ────────────────────────────────────────────────────────
+  const filtered = slots.filter(s => {
+    if (filterDate && s.date !== filterDate) return false
+    if (filterStatus === "available" && (s.booked || s.canceled)) return false
+    if (filterStatus === "booked" && (!s.booked || s.canceled)) return false
+    if (filterStatus === "canceled" && !s.canceled) return false
+    return true
+  })
 
-  const availableSlots = slots.filter(s => !s.booked && !s.canceled)
+  // ─ Stats ──────────────────────────────────────────────────────────
+  const total = slots.length
+  const available = slots.filter(s => !s.booked && !s.canceled).length
+  const booked = slots.filter(s => s.booked && !s.canceled).length
+  const canceled = slots.filter(s => s.canceled).length
 
+  // ─── Render ────────────────────────────────────────────────────────
   return (
-    <Container
-      maxWidth="md"
-      disableGutters
-      sx={{ px: { xs: 2, sm: 4, md: 6 }, py: 6 }}
-    >
-      {/* HEADER */}
-      <Typography variant="h4" gutterBottom>
-        🩺 Professional Dashboard
-      </Typography>
-      <Typography variant="subtitle1" color="textSecondary" gutterBottom>
-        Welcome, Dr. {userProfile.name}
-      </Typography>
+    <Box sx={{ position: "relative", minHeight: "100vh", overflow: "hidden" }}>
+      {/* Animated gradient background */}
+      <Box
+        sx={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: "100%",
+          height: "100%",
+          background: "linear-gradient(45deg, #2196f3, #21cbf3, #64b5f6, #81d4fa)",
+          backgroundSize: "400% 400%",
+          animation: `${gradientAnim} 20s ease infinite`,
+          zIndex: -2
+        }}
+      />
 
-      {/* ADD SLOT FORM */}
-      <Paper elevation={3} sx={{ p: 4, mb: 6 }}>
-        <Typography variant="h6" gutterBottom>
-          📅 Add New Availability Slot
+      {/* Semi-transparent overlay */}
+      <Box
+        sx={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: "100%",
+          height: "100%",
+          bgcolor: "rgba(255,255,255,0.85)",
+          zIndex: -1
+        }}
+      />
+
+      <Container maxWidth="lg" sx={{ py: 4 }}>
+        <Typography variant="h4" gutterBottom>
+          🩺 Dr. {userProfile.name}’s Dashboard
         </Typography>
-        <Box component="form" onSubmit={handleAddSlot} sx={{ mt: 2 }}>
-          <Grid container spacing={2}>
-            <Grid item xs={12} sm={4}>
-              <TextField
-                label="Date"
-                type="date"
-                value={date}
-                onChange={e => setDate(e.target.value)}
-                InputLabelProps={{ shrink: true }}
-                fullWidth
-                required
-              />
-            </Grid>
-            <Grid item xs={12} sm={4}>
-              <TextField
-                label="Start Time"
-                type="time"
-                value={startTime}
-                onChange={e => setStartTime(e.target.value)}
-                InputLabelProps={{ shrink: true }}
-                fullWidth
-                required
-              />
-            </Grid>
-            <Grid item xs={12} sm={4}>
-              <TextField
-                label="End Time"
-                type="time"
-                value={endTime}
-                onChange={e => setEndTime(e.target.value)}
-                InputLabelProps={{ shrink: true }}
-                fullWidth
-                required
-              />
-            </Grid>
-          </Grid>
-          {addError && (
-            <Alert severity="error" sx={{ mt: 2 }}>
-              {addError}
-            </Alert>
-          )}
-          <Button type="submit" variant="contained" sx={{ mt: 3 }}>
-            Add Slot
-          </Button>
-        </Box>
-      </Paper>
 
-      {/* AVAILABLE SLOTS */}
-      <Typography variant="h6" gutterBottom>
-        🗓️ Available Slots
-      </Typography>
-      {loadingSlots ? (
-        <Box textAlign="center" py={4}>
-          <CircularProgress />
-        </Box>
-      ) : errorSlots ? (
-        <Alert severity="error">{errorSlots}</Alert>
-      ) : availableSlots.length === 0 ? (
-        <Typography>No available slots to display.</Typography>
-      ) : (
-        <Paper elevation={1} sx={{ mb: 6 }}>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Date</TableCell>
-                <TableCell>Start</TableCell>
-                <TableCell>End</TableCell>
-                <TableCell align="center">Action</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {availableSlots.map(slot => (
-                <TableRow key={slot.id}>
-                  <TableCell>{slot.date}</TableCell>
-                  <TableCell>{slot.startTime}</TableCell>
-                  <TableCell>{slot.endTime}</TableCell>
-                  <TableCell align="center">
-                    <IconButton
-                      color="error"
-                      size="small"
-                      onClick={() => handleDeleteSlot(slot.id)}
-                    >
-                      <DeleteIcon />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        {/* Stats */}
+        <Grid container spacing={2} mb={4}>
+          {[
+            { label: "All Slots", value: total, icon: <AllIcon color="action" /> },
+            { label: "Available", value: available, icon: <AvailableIcon color="success" /> },
+            { label: "Booked", value: booked, icon: <BookedIcon color="primary" /> },
+            { label: "Canceled", value: canceled, icon: <CanceledIcon color="error" /> }
+          ].map((stat, i) => (
+            <Grid item xs={6} md={3} key={i}>
+              <Card elevation={3}>
+                <CardContent sx={{ textAlign: "center" }}>
+                  <Box sx={{ fontSize: 40 }}>{stat.icon}</Box>
+                  <Typography variant="h5">{stat.value}</Typography>
+                  <Typography color="textSecondary">{stat.label}</Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+
+        {/* Tabs */}
+        <Paper>
+          <Tabs value={tab} onChange={(_, v) => setTab(v)} centered>
+            <Tab icon={<AddIcon />} label="Add Slot" />
+            <Tab icon={<AllIcon />} label="Manage Slots" />
+          </Tabs>
         </Paper>
-      )}
 
-      <Divider sx={{ mb: 4 }} />
+        {/* Add Slot Panel */}
+        {tab === 0 && (
+          <Box component="form" onSubmit={handleAddSlot} sx={{ mt: 3 }}>
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={4}>
+                <TextField
+                  label="Date"
+                  type="date"
+                  value={date}
+                  onChange={e => setDate(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  fullWidth
+                />
+              </Grid>
+              <Grid item xs={6} md={4}>
+                <TextField
+                  label="Start Time"
+                  type="time"
+                  value={startTime}
+                  onChange={e => setStartTime(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  fullWidth
+                />
+              </Grid>
+              <Grid item xs={6} md={4}>
+                <TextField
+                  label="End Time"
+                  type="time"
+                  value={endTime}
+                  onChange={e => setEndTime(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  fullWidth
+                />
+              </Grid>
+              {formError && (
+                <Grid item xs={12}>
+                  <Alert severity="error">{formError}</Alert>
+                </Grid>
+              )}
+              <Grid item xs={12}>
+                <Button type="submit" variant="contained">
+                  Add Slot
+                </Button>
+              </Grid>
+            </Grid>
+          </Box>
+        )}
 
-      {/* BOOKED APPOINTMENTS */}
-      <Typography variant="h6" gutterBottom>
-        📌 Booked Appointments
-      </Typography>
-      {loadingBooked ? (
-        <Box textAlign="center" py={4}>
-          <CircularProgress />
-        </Box>
-      ) : errorBooked ? (
-        <Alert severity="error">{errorBooked}</Alert>
-      ) : bookedWithNames.length === 0 ? (
-        <Typography>No booked appointments yet.</Typography>
-      ) : (
-        <Paper elevation={1}>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Date</TableCell>
-                <TableCell>Start</TableCell>
-                <TableCell>End</TableCell>
-                <TableCell>Patient</TableCell>
-                <TableCell>Status</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {bookedWithNames.map(slot => (
-                <TableRow key={slot.id}>
-                  <TableCell>{slot.date}</TableCell>
-                  <TableCell>{slot.startTime}</TableCell>
-                  <TableCell>{slot.endTime}</TableCell>
-                  <TableCell>{slot.patientName}</TableCell>
-                  <TableCell>
-                    {slot.canceled
-                      ? "Canceled"
-                      : slot.booked
-                      ? "Booked"
-                      : "Available"}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Paper>
-      )}
-    </Container>
+        {/* Manage Slots Panel */}
+        {tab === 1 && (
+          <Box sx={{ mt: 3 }}>
+            {/* Filters */}
+            <Grid container spacing={2} alignItems="center" mb={2}>
+              <Grid item xs={12} md={4}>
+                <TextField
+                  label="Filter by Date"
+                  type="date"
+                  value={filterDate}
+                  onChange={e => setFilterDate(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  fullWidth
+                />
+              </Grid>
+              <Grid item xs={12} md={8}>
+                {["all","available","booked","canceled"].map(status => (
+                  <Button
+                    key={status}
+                    variant={filterStatus===status?"contained":"outlined"}
+                    onClick={()=>setFilterStatus(status)}
+                    sx={{ mr: 1 }}
+                  >
+                    {status.charAt(0).toUpperCase()+status.slice(1)}
+                  </Button>
+                ))}
+              </Grid>
+            </Grid>
+
+            {/* Table */}
+            {loadingSlots ? (
+              <Box textAlign="center" py={4}>
+                <CircularProgress />
+              </Box>
+            ) : errorSlots ? (
+              <Alert severity="error">{errorSlots}</Alert>
+            ) : filtered.length===0 ? (
+              <Typography>No slots match filters.</Typography>
+            ) : (
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Date</TableCell>
+                    <TableCell>Time</TableCell>
+                    <TableCell>Patient</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell align="center">Action</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {filtered.map(slot => {
+                    const isBooked = slot.booked && !slot.canceled
+                    const patient = bookedWithNames.find(s=>s.id===slot.id)?.patientName||"-"
+                    return (
+                      <TableRow key={slot.id}>
+                        <TableCell>{slot.date}</TableCell>
+                        <TableCell>
+                          {slot.startTime} – {slot.endTime}
+                        </TableCell>
+                        <TableCell>{isBooked?patient:"—"}</TableCell>
+                        <TableCell>
+                          <Chip
+                            label={
+                              slot.canceled?"Canceled":
+                              isBooked?"Booked":"Available"
+                            }
+                            color={
+                              slot.canceled?"error":
+                              isBooked?"primary":"success"
+                            }
+                            size="small"
+                          />
+                        </TableCell>
+                        <TableCell align="center">
+                          {!slot.canceled && (
+                            <IconButton
+                              color="error"
+                              onClick={()=>handleCancel(slot.id)}
+                            >
+                              <DeleteIcon />
+                            </IconButton>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            )}
+          </Box>
+        )}
+      </Container>
+    </Box>
   )
 }
