@@ -1,5 +1,11 @@
 # FelanoCare 
-It has been hosted and live..link below
+It has been hosted and live.
+
+
+
+
+
+
 https://felanocare-fqmv.onrender.com
 FelanoCare  is an AI-driven pharmaceutical health platform designed to transform health service delivery. It integrates artificial intelligence across multiple key areas such as consultation booking, e-pharmacy management, personalized dietetics, psychology & mental health support, and herbal medicine innovation.
 
